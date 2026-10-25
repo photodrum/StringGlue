@@ -31,6 +31,9 @@ function makeChars(frame) {
     Object.defineProperty(r, 'length', { get: () => L, set: v => { L = Math.min(v, frame.chars.length - start); } });
     Object.defineProperty(r, 'contents', { get: () => frame.chars.slice(start, start + L).map(c => c.contents).join('') });
     Object.defineProperty(r, 'characterAttributes', { get: () => attrProxy(() => frame.chars.slice(start, start + L)) });
+    // атрибуты абзаца, в котором стоит начало диапазона (возврат каретки принадлежит абзацу, который он закрывает)
+    Object.defineProperty(r, 'paragraphAttributes', { get: () => { let pi = 0; for (let i = 0; i < start; i++) if (frame.chars[i].contents === '\r') pi++;
+      return frame.paraAttrs[pi] || (frame.paraAttrs[pi] = {}); } });
     r.remove = () => {
       // атрибуты абзаца хранятся в его конце: удалённые возвраты каретки уносят атрибуты своих абзацев
       let pi = 0; for (let i = 0; i < start; i++) if (frame.chars[i].contents === '\r') pi++;
@@ -59,12 +62,12 @@ function makeChars(frame) {
     get characterAttributes() { return attrProxy(() => frame.chars); },
   };
   Object.defineProperty(frame, 'paragraphs', { get: () => {
-    const out = []; let s = 0;
+    const out = []; let s = 0, pn = 0;
     for (let i = 0; i <= frame.chars.length; i++) {
       if (i === frame.chars.length || frame.chars[i].contents === '\r') {
         const a = s, b = i;   // как в Illustrator: диапазон абзаца без завершающего \r, у пустого абзаца он пустой
-        const pa = frame.paraAttrs[out.length] || (frame.paraAttrs[out.length] = {});
-        out.push({ characterAttributes: attrProxy(() => frame.chars.slice(a, b)), paragraphAttributes: pa, contents: frame.chars.slice(a, b).map(c => c.contents).join('') });
+        const pa = frame.paraAttrs[pn] || (frame.paraAttrs[pn] = {}); pn++;
+        if (!(SKIPEMPTY && a === b)) out.push({ characterAttributes: attrProxy(() => frame.chars.slice(a, b)), paragraphAttributes: pa, contents: frame.chars.slice(a, b).map(c => c.contents).join('') });
         s = i + 1;
       }
     }
@@ -75,6 +78,8 @@ function makeChars(frame) {
 // env.live: ведём себя как живой Illustrator 25.10 — у сконвертированной копии оформление не читается,
 // а convertAreaObjectToPointObject оставляет исходную копию и возвращает новый объект
 let LIVE = false;
+// env.skipEmpty: коллекция paragraphs не содержит пустых абзацев — номера абзацев не совпадают с числом возвратов каретки
+let SKIPEMPTY = false;
 function newFrame(kind, extra) {
   const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, name: '', story: { textFrames: { length: 1 } },
     remove() { if (this.dead) throw new Error('No such element'); this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
@@ -210,6 +215,7 @@ function run(frames, opt, env) {
   const { app, created, doc } = makeApp(frames, env);
   NODUP = !!(env && env.noDup);
   LIVE = !!(env && env.live);
+  SKIPEMPTY = !!(env && env.skipEmpty);
   const ctx = Object.assign({ app, console, RGBColor: function () {}, StrokeCap: { BUTTENDCAP: 'BUTT' } }, ENUMS);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(HOST, 'utf8').replace(/^\s+/, ''), ctx);
@@ -220,7 +226,7 @@ function run(frames, opt, env) {
   LEFTOVERS.length = 0;
   const res = vm.runInContext('glueText(__opt)', ctx);
   const junk = LEFTOVERS.filter(x => !x.removed).length + anaJunk;
-  LIVE = false;
+  LIVE = false; SKIPEMPTY = false;
   return { res, created, frames, ana, doc, junk };
 }
 
@@ -244,7 +250,8 @@ function pointText(paras, x, y, opts = {}) {
   const f = newFrame('POINTTEXT', { anchor: [x, y], dyn: true });
   const chars = [];
   paras.forEach((P, pi) => {
-    if (pi) chars.push({ contents: '\r', attrs: baseAttrs(Object.assign({}, P.attrs, { leading: P.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading })) });
+    // возврат каретки принадлежит абзацу, который он закрывает, и несёт его оформление
+    if (pi) { const Q = paras[pi - 1]; chars.push({ contents: '\r', attrs: baseAttrs(Object.assign({}, Q.attrs, { leading: Q.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading })) }); }
     P.lines.forEach((t, li) => {
       if (li) chars.push({ contents: '\u0003', attrs: baseAttrs(Object.assign({}, P.attrs, { leading: P.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading })) });
       for (const ch of t) chars.push({ contents: ch, attrs: baseAttrs(Object.assign({}, P.attrs, { leading: P.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading })) });
@@ -259,8 +266,8 @@ function areaText(paras, rect, opts = {}) {
   const f = newFrame('AREATEXT', { textPath: Object.assign({}, rect), dyn: true, wraps: new Set() });
   const chars = [];
   paras.forEach((P, pi) => {
-    const A = () => baseAttrs(Object.assign({}, P.attrs, { leading: P.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading }));
-    if (pi) chars.push({ contents: '\r', attrs: A() });
+    const A = (Q = P) => baseAttrs(Object.assign({}, Q.attrs, { leading: Q.leading || opts.leading || 14.4, autoLeading: !!opts.autoLeading }));
+    if (pi) chars.push({ contents: '\r', attrs: A(paras[pi - 1]) });
     P.lines.forEach((t, li) => {
       if (li) { f.wraps.add(chars.length); chars.push({ contents: ' ', attrs: A() }); }
       for (const ch of t) chars.push({ contents: ch, attrs: A() });

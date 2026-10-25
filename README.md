@@ -65,6 +65,7 @@
 node tests/runtests.js
 node tests/autotests.js
 node tests/lifetests.js
+node tests/matrixtests.js
 ```
 
 ## Поддержать автора
@@ -146,6 +147,7 @@ The `tests` folder contains a Node.js mock of the Illustrator object model and a
 node tests/runtests.js
 node tests/autotests.js
 node tests/lifetests.js
+node tests/matrixtests.js
 ```
 
 ## Support the author

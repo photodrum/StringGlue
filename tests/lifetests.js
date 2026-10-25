@@ -202,18 +202,41 @@ const cards = () => [areaText([
   { lines: ['PAPAINA'], attrs: st(16, 'Bold'), leading: 22 },
   { lines: ['Oczyszczanie oparte na działaniu', 'enzymów oraz kontrola'], attrs: st(16), leading: 22 }],
   { left: 0, top: 811, width: 300, height: 400 })];
-S('Готовый текст с пустыми абзацами между карточками', cards, { blocks: 2, paras: 2 });
-S('То же, если точный разбор недоступен (запасной путь)', cards, { blocks: 2, env: { noDup: true } });
+S('Готовый текст с пустыми абзацами между карточками', cards, { blocks: 2, paras: 2, keepStyle: true });
+S('То же, если точный разбор недоступен (запасной путь)', cards, { blocks: 2, env: { noDup: true }, keepStyle: true });
 S('Пустой первый абзац, запасной путь', () => [areaText([{ lines: [''], attrs: st(12), leading: 16 }, { lines: body, attrs: st(12), leading: 16 }],
   { left: 0, top: 809.6, width: 360, height: 120 })], { blocks: 1, env: { noDup: true } });
 
+// скриншот 25.10 (v1.2.2): две карточки — заголовок жирным и абзац в одном тексте в области.
+// В живом Illustrator оформление сконвертированной копии не читается, а копия остаётся в документе.
+const cards2 = () => [areaText([
+  { lines: ['OCHRONA SZKLIWA'], attrs: st(13, 'DIN Bold'), leading: 20 },
+  { lines: ['Biocalcium, Ultracomplex i', 'Sensitive wspierają codzienną', 'pielęgnację ukierunkowaną na', 'remineralizację dzięki',
+            'hydroksyapatytowi i technologiom', 'opartym na wapniu,', 'zaprojektowanym w celu', 'wzmacniania szkliwa i', 'zapewnienia długotrwałego', 'komfortu.'],
+    attrs: st(13, 'DIN Regular', GRAY), leading: 20, spaceBefore: 6 },
+  { lines: [''], attrs: st(13, 'DIN Regular'), leading: 20 }, { lines: [''], attrs: st(13, 'DIN Regular'), leading: 20 },
+  { lines: ['PIELĘGNACJA DZIĄSEŁ I', 'ŚWIEŻOŚĆ'], attrs: st(13, 'DIN Bold'), leading: 20 },
+  { lines: ['Medical Herbs, Active i', 'Lavendersept łączą ekstrakty', 'roślinne, olejki eteryczne oraz', 'składniki wspierające świeżość,',
+            'pomagając utrzymać komfort', 'dziąseł i codzienną świeżość jamy', 'ustnej.'], attrs: st(13, 'DIN Regular', GRAY), leading: 20, spaceBefore: 6 }],
+  { left: 0, top: 811, width: 240, height: 600 })];
+S('Карточки 25.10: живой Illustrator — оформление и исходник', cards2, { blocks: 2, env: { live: true }, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: обычный путь', cards2, { blocks: 2, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: запасной путь', cards2, { blocks: 2, env: { noDup: true }, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: живой Illustrator, «Сохранить строки»', cards2, { mode: 'lines', env: { live: true }, keepStyle: true, allRemoved: true });
+S('Готовый точечный текст: живой Illustrator', () => [
+  pointText([{ lines: ['Заголовок раздела'], attrs: st(20, 'Bold'), leading: 24 },
+             { lines: body, attrs: st(12), leading: 16, spaceBefore: 8 }], 0, 800)
+], { blocks: 1, paras: 2, env: { live: true }, keepStyle: true, allRemoved: true });
+
 let fail = 0;
+const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {
   const frames = sc.build(), msgs = [], mode = sc.exp.mode || 'auto';
   const flat = []; (function walk(a) { a.forEach(x => x.typename === 'GroupItem' ? walk(x.pageItems) : flat.push(x)); })(frames);
   const texts = flat.filter(f => f.typename === 'TextFrame'), paths = flat.filter(f => f.typename !== 'TextFrame');
   const usable = texts.filter(f => f.kind !== 'PATHTEXT' && !(f.story && f.story.textFrames.length > 1) && !f.matrix && !f.hidden);
   const srcChars = usable.map(f => f.contents).join('').replace(/[\s\u0003\r]/g, '').split('').sort().join('');
+  const srcStyle = usable.flatMap(f => f.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).map(c => c.contents + styleOf(c)).sort().join('|');
   const r = H.run(frames, { mode, track: true, hyph: false, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }, sc.exp.env);
   if (sc.exp.err) { if (r.res !== 'ERR:' + sc.exp.err) msgs.push('ждали ошибку «' + sc.exp.err + '», получили ' + r.res);
     if (r.ana.err !== sc.exp.err) msgs.push('анализ: ' + JSON.stringify(r.ana)); }
@@ -225,6 +248,8 @@ for (const sc of T) {
     const want = E.dupes ? [...new Set([0])] && usable.filter((f, i) => i % 2 === 0).map(f => f.contents).join('').replace(/[\s\u0003\r]/g, '').split('').sort().join('') : srcChars;
     if (outChars.split('').sort().join('') !== want) msgs.push('буквы потеряны или добавлены');
     if (r.junk) msgs.push(`оставлены лишние объекты: ${r.junk}`);
+    if (E.keepStyle) { const os = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).map(c => c.contents + styleOf(c)).sort().join('|');
+      if (os !== srcStyle) { const bad = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).slice(0, 3).map(styleOf); msgs.push('оформление потеряно: ' + bad.join(', ')); } }
     if (E.blocks !== undefined && out.length !== E.blocks) msgs.push(`текстов ${out.length}, ждали ${E.blocks}`);
     if (mode === 'auto' && E.blocks !== undefined && r.ana.blocks.length !== E.blocks) msgs.push(`анализ: блоков ${r.ana.blocks.length}, ждали ${E.blocks}`);
     if (E.kinds) { const k = {}; (r.ana.blocks || []).forEach(b => k[b.k] = (k[b.k] || 0) + 1);

@@ -161,8 +161,7 @@ GLUE.run = function (opt) {
     var gLead = GLUE.globalLead(lines);
 
     var src = frames[0], host;
-    try { host = src.layer; if (host.locked || !host.visible) host = doc.activeLayer; }
-    catch (e) { host = doc.activeLayer; }
+    host = GLUE.topLayer(doc);
 
     var created = [], nPara = 0, nChars = 0;
     for (i = 0; i < infos.length; i++) nChars += infos[i].vis;
@@ -185,6 +184,16 @@ GLUE.run = function (opt) {
         GLUE.n(lines.length, "lines") + (opt.mode === "split" ? "" : ", " + GLUE.n(nPara, "paras")) + GLUE.skipNote();
 };
 
+GLUE.topLayer = function (doc) {
+    try {
+        for (var i = 0; i < doc.layers.length; i++) {
+            var L = doc.layers[i];
+            if (L.name !== GLUE.PREVIEW && L.visible && !L.locked) return L;
+        }
+    } catch (e) {}
+    return doc.activeLayer;
+};
+
 GLUE.finish = function (doc, frames, created, opt) {
     var parents = [], i;
     for (i = 0; i < frames.length; i++) {
@@ -204,8 +213,7 @@ GLUE.runAuto = function (doc, frames, infos, opt) {
     for (i = 0; i < infos.length; i++) nChars += infos[i].vis;
     for (i = 0; i < seg.blocks.length; i++) {
         var B = seg.blocks[i], src = GLUE.blockSrc(B) || frames[0], host;
-        try { host = src.layer; if (host.locked || !host.visible) host = doc.activeLayer; }
-        catch (e) { host = doc.activeLayer; }
+        host = GLUE.topLayer(doc);
         created.push(GLUE.makeText(host, B.paras, B.kind === "a" ? "area" : "point", opt, B.lead, src, B.kind === "a"));
     }
     GLUE.finish(doc, frames, created, opt);
@@ -431,6 +439,9 @@ GLUE.segment = function (rows, opt) {
             for (k2 = 1; k2 < PL.length; k2++) if (PL[k2].hb === "s" || PL[k2].hb === "p") hard = true;
             var need = hard ? 0.85 : 0.75;
             if (hard && PL.length < 3) full = false;
+            var noSp = 0, pitch = [];
+            for (k2 = 0; k2 < PL.length - 1; k2++) { if (!GLUE.hasSpace(PL[k2])) noSp++; pitch.push(PL[k2].ref - PL[k2 + 1].ref); }
+            if (noSp * 2 > PL.length - 1 || GLUE.median(pitch) > 2.5 * PL[0].fsize) full = false;
             for (k2 = 0; k2 < PL.length - 1; k2++) if (PL[k2].right - PL[k2].left < need * bw) full = false;
             if (full) wrapped = true;
         }
@@ -488,6 +499,10 @@ GLUE.cutBlock = function (B, opt) {
         k += paras[i].lines.length;
     }
     var cuts = {};
+    for (i = 1; i < lines.length; i++) {
+        var p0 = lines[i - 1], p1 = lines[i];
+        if ((GLUE.isShort(p0) || GLUE.isShort(p1)) && p0.ref - p1.ref > 2.5 * Math.max(p0.fsize, p1.fsize)) cuts[i] = true;
+    }
     for (i = 0; i < gaps.length; i++) {
         var a = lines[idx[i] - 1], b = lines[idx[i]], g = gaps[i];
         if (g <= 3.0 * Math.max(a.fsize, b.fsize)) continue;
@@ -502,6 +517,16 @@ GLUE.cutBlock = function (B, opt) {
     }
     out.push(cur);
     return out;
+};
+
+GLUE.isShort = function (L) {
+    var n = 0;
+    for (var q = 0; q < L.toks.length; q++) if (L.toks[q].ch !== " ") n++;
+    return n <= 3;
+};
+GLUE.hasSpace = function (L) {
+    for (var q = 0; q < L.toks.length; q++) if (L.toks[q].ch === " ") return true;
+    return false;
 };
 
 GLUE.blockBounds = function (B) {
@@ -579,7 +604,7 @@ GLUE.collect = function (items, out, deco) {
 
 GLUE.usable = function (fr) {
     try { if (fr.kind === TextType.PATHTEXT) return false; } catch (e) {}
-    try { if (fr.kind === TextType.AREATEXT && (fr.nextFrame || fr.previousFrame)) return false; } catch (e1) {}
+    try { if (fr.kind === TextType.AREATEXT && fr.story.textFrames.length > 1) return false; } catch (e1) {}
     try { if (fr.orientation === TextOrientation.VERTICAL) return false; } catch (e2) {}
     try { var m = fr.matrix; if (Math.abs(m.mValueB) > 0.001 || Math.abs(m.mValueC) > 0.001) return false; } catch (e3) {}
     return true;
@@ -1152,7 +1177,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     }
     if (opt.mode !== "single" && tr.characters.length === toks.length) GLUE.lineLeading(tr, spans, paras);
     if (kind === "area") GLUE.fitHeight(tf, all, asc, gLead);
-    try { tf.move(src, ElementPlacement.PLACEBEFORE); } catch (e4) {}
+    try { tf.move(host, ElementPlacement.PLACEATBEGINNING); } catch (e4) {}
     return tf;
 };
 

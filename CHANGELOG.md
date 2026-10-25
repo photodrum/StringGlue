@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1
+- Новый текст всегда ложится наверх — в верхний видимый незаблокированный слой, поверх плашек и фонов.
+  New text is always placed on top — in the topmost visible unlocked layer, above plates and backgrounds.
+- Столбец значков или чисел, выделенный отдельно от таблицы, склеивается построчно, а не в один абзац.
+  A column of symbols or numbers selected apart from its table is glued row by row instead of into one paragraph.
+- Склеенный текст в области снова можно выделить и склеить (раньше считался связанным).
+  Glued area text can be selected and glued again (it was mistaken for threaded text).
+
 ## 1.2
 - Режим «Авто»: деление выделения на блоки — заголовки, абзацы, списки, таблицы по ячейкам, колонки; мини-карта блоков и рамки на артборде.
   Auto mode: splits the selection into blocks — headings, paragraphs, lists, tables by cell, columns; block map and artboard frames.

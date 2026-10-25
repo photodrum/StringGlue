@@ -282,7 +282,10 @@ GLUE.pools = function (infos) {
         u = units[i];
         for (j = 0; j < pools.length; j++) {
             var ok = true;
-            for (var k = 0; k < pools[j].units.length && ok; k++) if (GLUE.hits(u.box, pools[j].units[k].box)) ok = false;
+            for (var k = 0; k < pools[j].units.length && ok; k++) {
+                var w = pools[j].units[k].box;
+                if (GLUE.hits(u.box, w) || Math.min(u.box[2], w[2]) - Math.max(u.box[0], w[0]) <= 0.5) ok = false;
+            }
             if (ok) break;
         }
         if (j === pools.length) pools.push({ units: [], items: [] });
@@ -881,6 +884,7 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         if (pa[k]) return pa[k];
         var ca = null, r = { size: 12, lead: 14.4, font: "", fill: null, a: null, sb: 0, sa: 0, amt: 120 };
         ca = GLUE.paraCA(fr, fch, raw, pm, k);
+        try { ca.textFont.name; } catch (eF) { var c2 = GLUE.parsCA(pars, k); if (c2) ca = c2; }
         try { var pp = GLUE.paraPA(fch, pars, pm, k); r.sb = pp.spaceBefore || 0; r.sa = pp.spaceAfter || 0; if (pp.autoLeadingAmount > 0) r.amt = pp.autoLeadingAmount; } catch (e5) {}
         try { r.size = ca.size; r.font = ca.textFont.name; r.fill = ca.fillColor; } catch (e3) {}
         try { r.lead = ca.autoLeading ? r.size * r.amt / 100 : ca.leading; } catch (e4) { r.lead = r.size * r.amt / 100; }
@@ -949,6 +953,17 @@ GLUE.paraPA = function (fch, pars, pm, k) {
         try { var p = fch[i].paragraphAttributes; p.spaceBefore; return p; } catch (e) {}
     }
     try { if (pars && pars.length === pm.start.length) return pars[k].paragraphAttributes; } catch (e1) {}
+    return null;
+};
+GLUE.parsCA = function (pars, k) {
+    var n = 0, d, j;
+    try { n = pars ? pars.length : 0; } catch (e) {}
+    for (d = 0; d < n; d++) {
+        for (j = k - d; j <= k + d; j += d ? 2 * d : 1) {
+            if (j < 0 || j >= n) continue;
+            try { if (/\S/.test(pars[j].contents)) { var ca = pars[j].characterAttributes; ca.size; ca.textFont.name; return ca; } } catch (e1) {}
+        }
+    }
     return null;
 };
 GLUE.paraCA = function (fr, fch, raw, pm, k) {

@@ -113,3 +113,37 @@ check('Мелкий и крупный текст накладываются: с�
   const a = A({ width: 400, head: 48, body: 18, bodyWords: 8 }); const b = A({ width: 200, head: 7, body: 6, top: 880, x: 100, seed: 1 }); return [a, b]; });
 
 console.log(`\nПеребор и наложения: ${total - fail}/${total} прогонов без ошибок (${n} сочетаний размеров × 3 пути + наложения)`);
+
+// ---------- сетка карточек (скриншот 25.10): четыре текста в области 2×2 ----------
+// каждый готовый текст — свой блок; соседние колонки не складываются в таблицу по общим базовым линиям
+function grid(cols, rows, o = {}) {
+  const out = []; let s = 2;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const f = cardsFrame(Object.assign({ cards: 1, head: 14, body: 12, lr: 1.4, sb: 6, sa: 0, empties: 0, emptyLead: 0, headWords: 2, bodyWords: 18 + (r * cols + c) * 5,
+      width: 210, x: c * 250, top: 900 - r * 330, seed: s++ }, o));
+    out.push(f);
+  }
+  return out;
+}
+function checkGrid(name, build, blocks) {
+  for (const [pn, env] of PATHS) {
+    total++;
+    const msgs = [], fr = build();
+    const a = H.analyzeOnly(fr, { mode: 'auto', gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }).ana;
+    if (!a.blocks || a.blocks.length !== blocks || a.tRows) msgs.push(`анализ: блоков ${a.blocks && a.blocks.length}, таблица ${a.tRows}×${a.tCols}, ждали ${blocks} без таблицы`);
+    if (!a.fonts) msgs.push('анализ: шрифтов 0');
+    const fr2 = build(), r = H.run(fr2, { mode: 'auto', track: true, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }, env);
+    if (!r.res.startsWith('OK:')) msgs.push(r.res);
+    else {
+      if (r.created.length !== blocks) msgs.push(`текстов ${r.created.length}, ждали ${blocks}`);
+      const outText = r.created.map(t => norm(t.contents));
+      fr2.forEach(f => { if (!outText.includes(norm(f.srcParas.join(' ')))) msgs.push('текст рамки не собран целиком: «' + f.srcParas[0].slice(0, 30) + '»'); });
+    }
+    const u = [...new Set(msgs)].slice(0, 4);
+    if (u.length) { fail++; console.log('✗ ' + name + ' [' + pn + ']\n    ' + u.join('\n    ')); }
+  }
+}
+checkGrid('Сетка 2×2 карточек', () => grid(2, 2), 4);
+checkGrid('Сетка 3×1, колонки с зазором 40 pt', () => grid(3, 1), 3);
+checkGrid('Сетка 2×2, кегль 9, узкий зазор между колонками 12 pt', () => grid(2, 2, { head: 10, body: 9, width: 238 }), 4);
+console.log(`Сетки: итого ${total - fail}/${total}`);

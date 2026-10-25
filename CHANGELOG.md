@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.6
+- Готовые тексты, стоящие рядом по горизонтали (сетка карточек, колонки), разбираются каждый отдельно и больше не режутся на ячейки «таблицы» по общим базовым линиям. Вместе склеиваются только рамки, стоящие друг под другом в одной колонке.
+  Existing texts placed side by side (a grid of cards, columns) are processed separately and are no longer cut into “table” cells along shared baselines. Only frames stacked in one column are joined.
+- Имя шрифта для сводки «Найдено в выделении» читается запасным способом, если основной не сработал (было «Шрифтов 0»).
+  The font name for the “Found in selection” summary falls back to another read method (it showed “Fonts 0”).
+
 ## 1.2.5
 - Наложенные друг на друга тексты больше не перемешиваются: готовый текст (многострочный и в области) разбирается как отдельный остров. Колонки внахлёст, рамка, уходящая под соседний текст, подпись поверх абзаца, вложенные блоки и строки, стоящие вперемежку, склеиваются каждый в свой текст. Строки из разных рамок не склеиваются в одну строку и не принимаются за таблицу.
   Overlapping texts are no longer mixed: existing text (multi-line and area) is processed as a separate island. Overlapping columns, a frame that runs under the next text, a caption over a paragraph, nested blocks and interleaved lines each end up in their own text. Lines from different frames are never joined into one line or taken for a table.

@@ -627,7 +627,8 @@ GLUE.frameInfos = function (fr, o, precise) {
         return one ? [one] : [];
     }
     if (precise) { try { return GLUE.explode(fr, o); } catch (e) {} }
-    return GLUE.explodeQuick(fr, o, precise);
+    try { return GLUE.explodeQuick(fr, o, precise); } catch (e1) {}
+    return GLUE.explodeQuick(fr, o, false);
 };
 
 GLUE.explode = function (fr, o) {
@@ -680,15 +681,17 @@ GLUE.explode = function (fr, o) {
 };
 
 GLUE.rangeInfo = function (P, start, len, o, amt) {
-    var ch = P.textRange.characters, tk = [], maxS = 0, lead = 0, vis = 0, txt = "", skc = {}, sk = "", skN = -1;
+    var ch = P.textRange.characters, tk = [], maxS = 0, lead = 0, vis = 0, txt = "", skc = {}, sk = "", skN = -1, lastA = null;
     for (var q = start; q < start + len && q < ch.length; q++) {
         var cc = ch[q], s = cc.contents, ca = cc.characterAttributes;
         var L = 0;
-        try { L = ca.autoLeading ? ca.size * amt / 100 : ca.leading; } catch (e) { L = ca.size * 1.2; }
+        try { L = ca.autoLeading ? ca.size * amt / 100 : ca.leading; } catch (e) { try { L = ca.size * 1.2; } catch (e0) { L = 0; } }
         if (L > lead) lead = L;
         if (s === "\r" || s === "\u0003" || s === "\n") continue;
         if (s === "\t") s = " ";
-        var a = GLUE.readAttr(ca, o);
+        var a;
+        try { a = GLUE.readAttr(ca, o); } catch (eA) { a = lastA || GLUE.defAttr(); }
+        lastA = a;
         if (a.size > maxS) maxS = a.size;
         if (s !== " ") { vis++; skc[a.sk] = (skc[a.sk] || 0) + 1; if (skc[a.sk] > skN) { skN = skc[a.sk]; sk = a.sk; } }
         tk.push({ ch: s, a: a });
@@ -738,11 +741,11 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
     function attrsOf(k) {
         if (pa[k]) return pa[k];
         var ca = null, r = { size: 12, lead: 14.4, font: "", fill: null, a: null, sb: 0 };
-        try { ca = pars && pars[k] ? pars[k].characterAttributes : fr.textRange.characterAttributes; } catch (e2) { ca = fr.textRange.characterAttributes; }
+        ca = GLUE.paraCA(fr, pars, k);
         try { r.size = ca.size; r.font = ca.textFont.name; r.fill = ca.fillColor; } catch (e3) {}
         try { r.lead = ca.autoLeading ? r.size * 1.2 : ca.leading; } catch (e4) { r.lead = r.size * 1.2; }
         try { r.sb = pars[k].paragraphAttributes.spaceBefore || 0; } catch (e5) {}
-        if (withAttrs) r.a = GLUE.readAttr(ca, o);
+        if (withAttrs) { try { r.a = GLUE.readAttr(ca, o); } catch (e6) { r.a = GLUE.defAttr(); } }
         return (pa[k] = r);
     }
     var b = fr.geometricBounds, y, just = Justification.LEFT;

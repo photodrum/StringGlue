@@ -1,15 +1,19 @@
 ﻿function glueText(opt) {
+    GLUE.begin();
     try { return GLUE.run(GLUE.prep(opt)); }
     catch (e) { return "ERR:" + e.message + (e.line ? " (" + GLUE.t("line") + " " + e.line + ")" : ""); }
+    finally { GLUE.cleanup(); }
 }
 
 function glueAnalyze(opt) {
     try {
         opt = GLUE.prep(opt);
         if (opt.preview) GLUE.clearPreview();
+        GLUE.begin();
         return GLUE.json(GLUE.analyze(opt));
     }
     catch (e) { return GLUE.json({ err: e.message }); }
+    finally { GLUE.cleanup(); }
 }
 
 function glueClear() {
@@ -28,6 +32,33 @@ function glueSig() {
 
 var GLUE = {};
 
+GLUE.TMP = "__stringglue_tmp";
+GLUE.tmp = [];
+GLUE.conv = false;
+GLUE.begin = function () { GLUE.tmp = []; GLUE.conv = false; };
+GLUE.dup = function (x) {
+    var d = x.duplicate();
+    GLUE.tmp.push(d);
+    try { d.name = GLUE.TMP; } catch (e) {}
+    return d;
+};
+GLUE.keep = function (x) {
+    GLUE.tmp.push(x);
+    try { x.name = GLUE.TMP; } catch (e) {}
+};
+GLUE.drop = function (x) { try { if (x) x.remove(); } catch (e) {} };
+GLUE.cleanup = function () {
+    var list = GLUE.tmp, i;
+    GLUE.tmp = [];
+    for (i = list.length - 1; i >= 0; i--) GLUE.drop(list[i]);
+    if (!GLUE.conv) return;
+    GLUE.conv = false;
+    try {
+        var tf = app.activeDocument.textFrames;
+        for (i = tf.length - 1; i >= 0; i--) { try { if (tf[i].name === GLUE.TMP) tf[i].remove(); } catch (e1) {} }
+    } catch (e2) {}
+};
+
 GLUE.prep = function (o) {
     o = o || {};
     if (!o.mode) o.mode = "area";
@@ -45,13 +76,15 @@ GLUE.L = {
           line:"строка", chars:["буква", "буквы", "букв"], texts:["текст", "текста", "текстов"],
           lines:["строка", "строки", "строк"], paras:["абзац", "абзаца", "абзацев"],
           blocks:["блок", "блока", "блоков"], table:"таблица", skipped:"пропущено",
-          onlySkipped:"Тексты по контуру, связанные, повёрнутые и вертикальные не обрабатываются" },
+          onlySkipped:"Тексты по контуру, связанные, повёрнутые и вертикальные не обрабатываются",
+          attrs:"Не удалось прочитать оформление текста — склейка отменена, чтобы не потерять шрифты" },
     en: { noDoc:"No document is open", noSel:"Select letters or lines with the Selection tool (V)",
           noText:"No text objects in the selection", empty:"The selected text is empty", fail:"Could not assemble the text",
           line:"line", chars:["letter", "letters"], texts:["text", "texts"],
           lines:["line", "lines"], paras:["paragraph", "paragraphs"],
           blocks:["block", "blocks"], table:"table", skipped:"skipped",
-          onlySkipped:"Text on a path, threaded, rotated and vertical text are not processed" }
+          onlySkipped:"Text on a path, threaded, rotated and vertical text are not processed",
+          attrs:"Could not read the text formatting — gluing cancelled so fonts are not lost" }
 };
 GLUE.t = function (k) { return GLUE.L[GLUE.lang][k]; };
 GLUE.n = function (n, k) { return n + " " + GLUE.plural(n, GLUE.t(k)); };
@@ -631,77 +664,115 @@ GLUE.frameInfos = function (fr, o, precise) {
     return GLUE.explodeQuick(fr, o, false);
 };
 
+GLUE.WS = /[\s\u0003]/;
+
+GLUE.align = function (s, src) {
+    var m = [], j = 0, ws = GLUE.WS;
+    for (var i = 0; i < s.length; i++) {
+        var c = s.charAt(i);
+        if (!ws.test(c)) {
+            while (j < src.length && ws.test(src.charAt(j))) j++;
+            m.push(j < src.length && src.charAt(j) === c ? j : -1);
+            j++;
+        } else if (j < src.length && ws.test(src.charAt(j))) { m.push(j); j++; }
+        else m.push(j > 0 ? j - 1 : -1);
+    }
+    return m;
+};
+
 GLUE.explode = function (fr, o) {
     var P = null, out = [], i, wasArea = fr.kind !== TextType.POINTTEXT;
-    var ends = {}, src = fr.contents, nv = 0;
+    var src = fr.contents, ends = {}, nv = 0, fpi = [], pc = 0;
     for (i = 0; i < src.length; i++) {
         var c0 = src.charAt(i);
-        if (c0 === "\r" || c0 === "\n") ends[nv] = "p"; else if (c0 === "\u0003") ends[nv] = "s"; else if (!/\s/.test(c0)) nv++;
+        fpi.push(pc);
+        if (c0 === "\r" || c0 === "\n") { ends[nv] = "p"; pc++; }
+        else if (c0 === "\u0003") ends[nv] = "s";
+        else if (!/\s/.test(c0)) nv++;
     }
+    var F = { ch: fr.textRange.characters, pars: null, map: null };
+    try { F.pars = fr.paragraphs; } catch (e0) {}
     try {
-        P = fr.duplicate();
+        P = GLUE.dup(fr);
         if (P.kind !== TextType.POINTTEXT) {
             var R = null;
+            GLUE.conv = true;
             try { R = P.convertAreaObjectToPointObject(); } catch (e) {}
-            if (R && R.typename === "TextFrame") P = R;
+            if (R && R.typename === "TextFrame") { P = R; GLUE.keep(R); }
             if (P.kind !== TextType.POINTTEXT) throw new Error("convert");
         }
-        var s = P.contents, lines = [], st = 0, pIdx = 0, paraStart = true, hb = null, cnt = 0;
+        var s = P.contents, lines = [], st = 0, hb = null, cnt = 0;
+        F.map = GLUE.align(s, src);
         for (i = 0; i <= s.length; i++) {
             var c = i < s.length ? s.charAt(i) : "\r";
             if (c === "\r" || c === "\u0003" || c === "\n") {
-                lines.push({ start: st, len: i - st, brk: i < s.length ? 1 : 0, pIdx: pIdx, paraStart: paraStart, hb: hb });
-                paraStart = c !== "\u0003";
-                if (paraStart) pIdx++;
+                lines.push({ start: st, len: i - st, brk: i < s.length ? 1 : 0, hb: hb });
                 hb = wasArea ? (ends[cnt] || "w") : (c === "\u0003" ? "s" : "p");
                 st = i + 1;
             } else if (!/\s/.test(c)) cnt++;
         }
-        var pars = P.paragraphs, y = P.anchor[1];
+        var y = P.anchor[1], prevPi = -1;
         for (i = 0; i < lines.length; i++) {
-            var Ln = lines[i], pa = null;
-            try { pa = pars[Ln.pIdx].paragraphAttributes; } catch (e1) {}
+            var Ln = lines[i], fi = -1, k;
+            for (k = Ln.start; k <= Ln.start + Ln.len && k < F.map.length && fi < 0; k++) fi = F.map[k];
+            if (fi < 0 && Ln.start > 0) fi = F.map[Ln.start - 1] + 1;
+            var pIdx = fi >= 0 && fi < fpi.length ? fpi[fi] : (fi >= fpi.length ? pc : Math.max(prevPi, 0));
+            var paraStart = i === 0 || Ln.hb === "p";
+            var pa = null;
+            try { pa = F.pars[pIdx].paragraphAttributes; } catch (e1) {}
             var amt = 120;
             try { if (pa && pa.autoLeadingAmount > 0) amt = pa.autoLeadingAmount; } catch (e2) {}
-            var ri = GLUE.rangeInfo(P, Ln.start, Ln.len + Ln.brk, o, amt);
+            var ri = GLUE.rangeInfo(P, Ln.start, Ln.len + Ln.brk, o, amt, F);
             if (i > 0) {
                 y -= ri.lead;
-                if (Ln.paraStart) {
+                if (paraStart) {
                     try { y -= (pa ? pa.spaceBefore : 0) || 0; } catch (e3) {}
-                    try { y -= pars[lines[i - 1].pIdx].paragraphAttributes.spaceAfter || 0; } catch (e4) {}
+                    try { if (prevPi >= 0 && prevPi !== pIdx) y -= F.pars[prevPi].paragraphAttributes.spaceAfter || 0; } catch (e4) {}
                 }
             }
+            prevPi = pIdx;
             if (!ri.info) continue;
-            var g = GLUE.measureLine(P, Ln.start, Ln.len, pa, Ln.paraStart);
+            var g = GLUE.measureLine(P, Ln.start, Ln.len, pa, paraStart);
             ri.info.base = y; ri.info.left = g[0]; ri.info.right = g[2]; ri.info.fr = fr; ri.info.hb = Ln.hb;
             out.push(ri.info);
         }
-    } finally { try { if (P) P.remove(); } catch (e5) {} }
+    } finally { GLUE.drop(P); }
     return out;
 };
 
-GLUE.rangeInfo = function (P, start, len, o, amt) {
-    var ch = P.textRange.characters, tk = [], maxS = 0, lead = 0, vis = 0, txt = "", skc = {}, sk = "", skN = -1, lastA = null;
+GLUE.charCA = function (P, F, q) {
+    var j = F && F.map ? F.map[q] : -1;
+    if (j >= 0) { try { var c = F.ch[j].characterAttributes; c.size; return c; } catch (e) {} }
+    return P.textRange.characters[q].characterAttributes;
+};
+
+GLUE.rangeInfo = function (P, start, len, o, amt, F) {
+    var ch = P.textRange.characters, tk = [], maxS = 0, lead = 0, vis = 0, txt = "", skc = {}, sk = "", skN = -1, lastA = null, nOk = 0;
     for (var q = start; q < start + len && q < ch.length; q++) {
-        var cc = ch[q], s = cc.contents, ca = cc.characterAttributes;
+        var s = ch[q].contents, ca = null;
+        try { ca = GLUE.charCA(P, F, q); } catch (e9) {}
         var L = 0;
         try { L = ca.autoLeading ? ca.size * amt / 100 : ca.leading; } catch (e) { try { L = ca.size * 1.2; } catch (e0) { L = 0; } }
         if (L > lead) lead = L;
         if (s === "\r" || s === "\u0003" || s === "\n") continue;
         if (s === "\t") s = " ";
-        var a;
-        try { a = GLUE.readAttr(ca, o); } catch (eA) { a = lastA || GLUE.defAttr(); }
+        var a = null;
+        try { a = GLUE.readAttr(ca, o); nOk++; } catch (eA) { a = lastA; }
+        if (!a) { tk.push({ ch: s, a: null }); txt += s; if (s !== " ") vis++; continue; }
         lastA = a;
         if (a.size > maxS) maxS = a.size;
         if (s !== " ") { vis++; skc[a.sk] = (skc[a.sk] || 0) + 1; if (skc[a.sk] > skN) { skN = skc[a.sk]; sk = a.sk; } }
         tk.push({ ch: s, a: a });
         txt += s;
     }
+    if (vis && !nOk) throw new Error(GLUE.t("attrs"));
+    for (q = tk.length - 1, lastA = null; q >= 0; q--) { if (tk[q].a) lastA = tk[q].a; else tk[q].a = lastA; }
+    if (!lead) lead = maxS * amt / 100;
     return { lead: lead, info: vis ? { toks: tk, size: maxS, base: 0, left: 0, right: 0, text: txt, vis: vis, sk: sk } : null };
 };
 
 GLUE.measureLine = function (P, start, len, pa, paraStart) {
-    var D = P.duplicate();
+    var D = GLUE.dup(P);
     try {
         var ch = D.textRange.characters, n = ch.length;
         GLUE.cut(D, start + len, n - (start + len));
@@ -716,7 +787,7 @@ GLUE.measureLine = function (P, start, len, pa, paraStart) {
             } catch (e1) {}
         }
         return D.geometricBounds;
-    } finally { try { D.remove(); } catch (e) {} }
+    } finally { GLUE.drop(D); }
 };
 GLUE.cut = function (D, start, len) {
     if (len <= 0) return;
@@ -726,18 +797,34 @@ GLUE.cut = function (D, start, len) {
 };
 
 GLUE.explodeQuick = function (fr, o, withAttrs) {
-    var parts = [], i, out = [], isArea = fr.kind !== TextType.POINTTEXT;
-    try { if (isArea) { var Ls = fr.lines; for (i = 0; i < Ls.length; i++) parts.push({ t: Ls[i].contents, hb: i ? "w" : null, p: 0 }); } } catch (e) {}
+    var parts = [], i, out = [], isArea = fr.kind !== TextType.POINTTEXT, raw = fr.contents;
+    function brk(c) { return c === "\r" || c === "\n" || c === "\u0003"; }
+    function paraOf(at) { var n = 0; for (var j = 0; j < at && j < raw.length; j++) if (raw.charAt(j) === "\r" || raw.charAt(j) === "\n") n++; return n; }
+    try {
+        if (isArea) {
+            var Ls = fr.lines, cur = 0;
+            for (i = 0; i < Ls.length; i++) {
+                var t0 = Ls[i].contents.replace(/[\r\n\u0003]+$/, ""), at = -1;
+                if (t0.length) { at = raw.indexOf(t0, cur); }
+                else at = cur < raw.length && brk(raw.charAt(cur)) && i > 0 ? cur + 1 : cur;
+                if (at < 0) { parts = []; break; }
+                var pc = at > 0 ? raw.charAt(at - 1) : "";
+                parts.push({ t: t0, at: at, hb: i ? (pc === "\u0003" ? "s" : (pc === "\r" || pc === "\n" ? "p" : "w")) : null, p: paraOf(at) });
+                cur = at + t0.length;
+            }
+        }
+    } catch (e) { parts = []; }
     if (!parts.length) {
-        var raw = fr.contents, cur = "", hb = null, pi = 0;
+        var cs = "", hb = null, pi = 0, st = 0;
         for (i = 0; i <= raw.length; i++) {
             var c = i < raw.length ? raw.charAt(i) : "\r";
-            if (c === "\r" || c === "\n" || c === "\u0003") { parts.push({ t: cur, hb: hb, p: pi }); cur = ""; hb = c === "\u0003" ? "s" : "p"; if (hb === "p") pi++; }
-            else cur += c;
+            if (brk(c)) { parts.push({ t: cs, at: st, hb: hb, p: pi }); cs = ""; hb = c === "\u0003" ? "s" : "p"; if (hb === "p") pi++; st = i + 1; }
+            else cs += c;
         }
     }
-    var pars = null, pa = [];
+    var pars = null, pa = [], fch = null, nOk = 0;
     try { pars = fr.paragraphs; } catch (e1) {}
+    try { fch = fr.textRange.characters; } catch (e1b) {}
     function attrsOf(k) {
         if (pa[k]) return pa[k];
         var ca = null, r = { size: 12, lead: 14.4, font: "", fill: null, a: null, sb: 0 };
@@ -745,12 +832,12 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         try { r.size = ca.size; r.font = ca.textFont.name; r.fill = ca.fillColor; } catch (e3) {}
         try { r.lead = ca.autoLeading ? r.size * 1.2 : ca.leading; } catch (e4) { r.lead = r.size * 1.2; }
         try { r.sb = pars[k].paragraphAttributes.spaceBefore || 0; } catch (e5) {}
-        if (withAttrs) { try { r.a = GLUE.readAttr(ca, o); } catch (e6) { r.a = GLUE.defAttr(); } }
+        if (withAttrs) { try { r.a = GLUE.readAttr(ca, o); } catch (e6) { r.a = null; } }
         return (pa[k] = r);
     }
-    var b = fr.geometricBounds, y, just = Justification.LEFT;
-    try { just = fr.paragraphs[0].paragraphAttributes.justification; } catch (e6) {}
-    var A0 = attrsOf(0);
+    function justOf(k) { try { return pars[k].paragraphAttributes.justification; } catch (e) { return Justification.LEFT; } }
+    var b = fr.geometricBounds, y;
+    var A0 = attrsOf(parts.length ? parts[0].p : 0);
     if (!isArea) { try { y = fr.anchor[1]; } catch (e7) { y = b[1] - A0.size * 0.8; } }
     else y = b[1] - A0.size * 0.8;
     var k = 0;
@@ -760,13 +847,26 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         var A = attrsOf(parts[i].p);
         if (i > 0) y -= A.lead + (parts[i].hb === "p" ? A.sb : 0);
         var t = parts[i].t.replace(/[\r\u0003\n]/g, "").replace(/\s+$/, ""), tk = [], vis = 0;
-        for (var q = 0; q < t.length; q++) { var c2 = t.charAt(q) === "\t" ? " " : t.charAt(q); tk.push({ ch: c2, a: A.a }); if (c2 !== " ") vis++; }
+        for (var q = 0; q < t.length; q++) {
+            var c2 = t.charAt(q) === "\t" ? " " : t.charAt(q), ca2 = A.a;
+            if (withAttrs && fch && c2 !== " ") { try { ca2 = GLUE.readAttr(fch[parts[i].at + q].characterAttributes, o); } catch (e8) { ca2 = A.a; } }
+            if (ca2) nOk++;
+            tk.push({ ch: c2, a: ca2 });
+            if (c2 !== " ") vis++;
+        }
         if (!vis) continue;
-        var w = t.length * A.size * k, l = b[0];
+        var w = t.length * A.size * k, l = b[0], just = justOf(parts[i].p);
         if (just === Justification.CENTER) l = (b[0] + b[2]) / 2 - w / 2;
         if (just === Justification.RIGHT) l = b[2] - w;
         out.push({ toks: tk, size: A.size, base: y, left: l, right: l + w, text: t, vis: vis, font: A.font, hb: parts[i].hb,
                    sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr });
+    }
+    if (withAttrs) {
+        if (out.length && !nOk) throw new Error(GLUE.t("attrs"));
+        var last = null, j2, q2;
+        for (j2 = 0; j2 < out.length; j2++) for (q2 = 0; q2 < out[j2].toks.length; q2++) { if (out[j2].toks[q2].a) last = out[j2].toks[q2].a; else out[j2].toks[q2].a = last; }
+        for (j2 = out.length - 1; j2 >= 0; j2--) for (q2 = out[j2].toks.length - 1; q2 >= 0; q2--) { if (out[j2].toks[q2].a) last = out[j2].toks[q2].a; else out[j2].toks[q2].a = last; }
+        for (j2 = 0; j2 < out.length; j2++) { var mx = 0; for (q2 = 0; q2 < out[j2].toks.length; q2++) if (out[j2].toks[q2].a.size > mx) mx = out[j2].toks[q2].a.size; if (mx) out[j2].size = mx; }
     }
     return out;
 };
@@ -878,8 +978,9 @@ GLUE.frameInfo = function (fr, o) {
     for (var q = 0; q < cnt; q++) {
         var cc = ch[q], s = cc.contents;
         if (s === "\r" || s === "\n" || s === "\u0003" || s === "\t") s = " ";
-        var a;
-        try { a = GLUE.readAttr(cc.characterAttributes, o); } catch (eA) { a = lastA || GLUE.defAttr(); }
+        var a = null;
+        try { a = GLUE.readAttr(cc.characterAttributes, o); } catch (eA) { a = lastA; }
+        if (!a) { try { a = GLUE.readAttr(fr.textRange.characterAttributes, o); } catch (eB) { throw new Error(GLUE.t("attrs")); } }
         lastA = a;
         if (a.size > maxS) maxS = a.size;
         if (s !== " ") {
@@ -1284,7 +1385,8 @@ GLUE.overflows = function (tf, nLines) {
 GLUE.readAttr = function (ca, o) {
     var a = {};
     try { a.font = ca.textFont; } catch (e) { a.font = null; }
-    try { a.size = ca.size; } catch (e0) { a.size = 12; }
+    a.size = ca.size;
+    if (!(a.size > 0)) throw new Error(GLUE.t("attrs"));
     try { a.fill = ca.fillColor; } catch (e2) { a.fill = null; }
     try { a.stroke = ca.strokeColor; a.sw = ca.strokeWeight; } catch (e3) { a.stroke = null; a.sw = 0; }
     try { a.hs = ca.horizontalScale; a.vs = ca.verticalScale; a.bs = ca.baselineShift; a.tr = ca.tracking; } catch (e5) { a.hs = 100; a.vs = 100; a.bs = 0; a.tr = 0; }

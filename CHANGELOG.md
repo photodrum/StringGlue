@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3
+- Исправлено: в 1.2.2 готовый текст склеивался шрифтом и кеглем по умолчанию, а поверх исходника оставалась копия. Оформление теперь читается из исходного текста, временные копии всегда удаляются, а если оформление прочитать нельзя — склейка отменяется с понятной ошибкой вместо тихой потери шрифтов.
+  Fixed: in 1.2.2 existing text was glued with the default font and size, and a copy was left over the original. Formatting is now read from the original text, temporary copies are always removed, and if formatting cannot be read, gluing stops with a clear error instead of silently losing fonts.
+- Запасной разбор текста в области больше не даёт всем строкам оформление первого абзаца (жирный заголовок не растекается на весь текст).
+  The fallback parser for area text no longer gives every line the first paragraph's formatting (a bold heading no longer spreads over the whole text).
+
 ## 1.2.2
 - Исправлена ошибка «the value would result in an illegal text range» на готовом тексте с пустыми абзацами (например, между карточками).
   Fixed “the value would result in an illegal text range” on existing text with empty paragraphs (e.g. between cards).

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+- В режиме «Авто» все переводы строк готового текста сохраняются — и Enter, и Shift+Enter, в точечном тексте и в тексте в области, чтобы вёрстка не плыла. Склеиваются только переносы по ширине рамки. Ручные режимы работают как раньше.
+  In Auto mode every line break of existing text is kept — both Enter and Shift+Enter, in point and area text — so the layout does not drift. Only wraps at the frame width are joined. Manual modes work as before.
+- Столбец значков или чисел (например, колонка таблицы с кружками под заголовком) снова собирается в один текст: каждый значок на своей строке и на своём месте, а не отдельными блоками.
+  A column of icons or numbers (e.g. a table column of dots under a heading) is again glued into one text: each icon on its own line and in its place, not as separate blocks.
+
 ## 1.2.9
 - Принудительный разрыв строки (Shift+Enter) в готовом тексте в области сохраняется — раньше при склейке он заменялся пробелом, а в запасном разборе строки слипались без пробела. В точечном тексте ручные разрывы строк по-прежнему перевёрстываются в абзац.
   A forced line break (Shift+Enter) in existing area text is kept — it used to be replaced with a space, and the fallback parser glued the lines without a space. In point text, manual line breaks are still re-laid out into a paragraph.

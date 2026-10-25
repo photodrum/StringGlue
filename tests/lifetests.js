@@ -17,11 +17,11 @@ const S = (name, build, exp) => T.push({ name, build, exp });
 S('Готовый точечный текст: заголовок + абзац с разрывами строк', () => [
   pointText([{ lines: ['Заголовок раздела'], attrs: st(20, 'Bold'), leading: 24 },
              { lines: body, attrs: st(12), leading: 16, spaceBefore: 8 }], 0, 800)
-], { blocks: 1, kinds: { a: 1 }, paras: 2, text: 'Заголовок раздела\r' + body.join(' '), lead: [null, 16], sb: [null, 8] });
+], { blocks: 1, kinds: { a: 1 }, paras: 2, text: 'Заголовок раздела\r' + body.join('\u0003'), lead: [null, 16], sb: [null, 8] });
 
-S('Абзац набран Enter в конце каждой строки', () => [
+S('Строки, набранные Enter, в «Авто» остаются абзацами', () => [
   pointText(body.map(t => ({ lines: [t], attrs: st(12), leading: 16 })), 0, 800)
-], { blocks: 1, kinds: { a: 1 }, paras: 1, text: body.join(' ') });
+], { blocks: 1, paras: 4, text: body.join('\r'), baselines: { [body[0]]: 800, [body[1]]: 784, [body[2]]: 768, [body[3]]: 752 } });
 
 S('Пустые абзацы-распорки вместо отбивок', () => [
   pointText([{ lines: ['Заголовок'], attrs: st(18, 'Bold'), leading: 16 }, { lines: [''], attrs: st(12), leading: 16 },
@@ -32,7 +32,7 @@ S('Пустые абзацы-распорки вместо отбивок', () =
 S('Абзац разрезан на два текстовых объекта', () => [
   pointText([{ lines: body.slice(0, 2), attrs: st(12), leading: 16 }], 0, 800),
   pointText([{ lines: body.slice(2), attrs: st(12), leading: 16 }], 0, 768)
-], { blocks: 1, kinds: { a: 1 }, paras: 1, text: body.join(' '), allRemoved: true });
+], { blocks: 1, kinds: { a: 1 }, paras: 1, text: body[0] + '\u0003' + body[1] + ' ' + body[2] + '\u0003' + body[3], allRemoved: true });
 
 S('Хороший текст в области не портится', () => [
   areaText([{ lines: body.slice(0, 3), attrs: st(12), leading: 16 }, { lines: body2, attrs: st(12), leading: 16, spaceBefore: 8 }],

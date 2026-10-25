@@ -188,18 +188,25 @@ S('Абзацы с красной строкой 1,5 em', () => {
   return out;
 }, { blocks: 1, kinds: { a: 1 }, fli: 18 });
 
-// столбец таблицы, выделенный отдельно: значки и числа с большим шагом строк — каждый своим текстом, а не абзацем
+// столбец таблицы, выделенный отдельно: значки и числа с большим шагом строк — один текст, каждый значок на своей строке и на своём месте
 S('Столбец значков таблицы (выделен один столбец)', () => {
   const G = rgb(43, 140, 80), R = rgb(210, 50, 60), O = rgb(190, 130, 20), out = [...C('C · Вкладки', st(17, 'Bold'), 900, 200)];
   [['●', G], ['○', R], ['○', R], ['⊠', O], ['⊠', O], ['●', G], ['●', G], ['●', G]].forEach(([s, c], r) => out.push(...C(s, st(20, 'Symbols', c), 840 - r * 108, 200)));
   return out;
-}, { blocks: 9, kinds: { p: 9 } });
+}, { blocks: 1, kinds: { p: 1 }, lines: 9 });
 
 S('Столбец чисел таблицы', () => {
   const out = [...C('Цена', st(12, 'Bold'), 800, 100)];
   ['250', '180', '1 200', '90'].forEach((s, r) => out.push(...C(s, st(12), 760 - r * 40, 100)));
   return out;
-}, { blocks: 5, kinds: { p: 5 } });
+}, { blocks: 1, kinds: { p: 1 }, lines: 5 });
+
+// скриншот 25.10: заголовок колонки «A · Подвал» и под ним восемь кружков по центру — один текст, кружки на своих местах
+S('Колонка «A · Подвал» с кружками (скриншот)', () => {
+  const G = rgb(43, 140, 80), out = [...L('A · Подвал', st(17, 'Bold', BLUE), 900, 720)];
+  for (let r = 0; r < 8; r++) out.push(...C('●', st(20, 'Symbols', G), 838 - r * 76, 720 + W('A · Подвал', 17) / 2));
+  return out;
+}, { blocks: 1, lines: 9 });
 
 let fail = 0;
 for (const sc of T) {
@@ -224,6 +231,7 @@ for (const sc of T) {
       js.forEach((j, pi) => { const got = (t.paraAttrs[pi] || {}).justification; if (got !== j) msgs.push(`абзац ${pi + 1}: выключка ${got}, ждали ${j}`); }); });
     if (sc.exp.fli !== undefined) { const t = r.created[0], f = (t.paraAttrs || []).map(a => Math.round(a.firstLineIndent || 0));
       if (!f.length || f.some(v => Math.abs(v - sc.exp.fli) > 1)) msgs.push(`красная строка: ${JSON.stringify(f)}, ждали ${sc.exp.fli}`); }
+    if (sc.exp.lines !== undefined) { const n = r.created[0].contents.split(/[\r\u0003]/).length; if (n !== sc.exp.lines) msgs.push(`строк ${n}, ждали ${sc.exp.lines}: ${JSON.stringify(r.created[0].contents)}`); }
     for (const k in sc.exp.kinds) if (kinds[k] !== sc.exp.kinds[k]) msgs.push(`вид ${k}: ${kinds[k] || 0}, ждали ${sc.exp.kinds[k]} (${JSON.stringify(kinds)})`);
     // базовые линии точечных текстов совпадают с исходником
     const srcLines = {}; frames.forEach(f => { const y = f.anchor[1]; (srcLines[y] = srcLines[y] || []).push(f); });

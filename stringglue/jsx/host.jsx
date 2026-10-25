@@ -614,10 +614,6 @@ GLUE.cutBlock = function (B, opt) {
         k += paras[i].lines.length;
     }
     var cuts = {};
-    for (i = 1; i < lines.length; i++) {
-        var p0 = lines[i - 1], p1 = lines[i];
-        if ((GLUE.isShort(p0) || GLUE.isShort(p1)) && p0.ref - p1.ref > 2.5 * Math.max(p0.fsize, p1.fsize)) cuts[i] = true;
-    }
     for (i = 0; i < gaps.length; i++) {
         var a = lines[idx[i] - 1], b = lines[idx[i]], g = gaps[i];
         if (g <= 3.0 * Math.max(a.fsize, b.fsize)) continue;
@@ -1313,6 +1309,8 @@ GLUE.splitParas = function (lines, gLead, opt) {
             lines[i].left - lines[i - 1].left > 0.6 * lines[i].fsize && lines[i].left - minL < 4 * lines[i].fsize;
         var startItem = !!lines[i].mk;
         if (lines[i].hb === "p" && (lines[i - 1].right - lines[i - 1].left) < 0.75 * (maxR - minL)) startItem = true;
+        if (lines[i].hb === "p" && opt.mode === "auto" && GLUE.isReady(lines[i])) startItem = true;
+        if ((GLUE.isShort(lines[i - 1]) || GLUE.isShort(lines[i])) && d > 2.5 * Math.max(lines[i - 1].fsize, lines[i].fsize)) startItem = true;
         var endList = item && !lines[i].mk && !cont;
         if (d > opt.para * GLUE.expectLead(lines[i], leads) || restyle || indent || startItem || endList) { cur = { lines: [lines[i]], gapBefore: d }; paras.push(cur); }
         else cur.lines.push(lines[i]);
@@ -1347,8 +1345,13 @@ GLUE.detectJust = function (all) {
     return Justification.LEFT;
 };
 
-GLUE.keepBreak = function (L) {
+GLUE.isReady = function (L) {
+    for (var i = 0; i < (L.items || []).length; i++) if (L.items[i].ready) return true;
+    return false;
+};
+GLUE.keepBreak = function (L, opt) {
     if (L.hb !== "s") return false;
+    if (opt && opt.mode === "auto" && GLUE.isReady(L)) return true;
     for (var i = 0; i < (L.items || []).length; i++) if (L.items[i].area) return true;
     return false;
 };
@@ -1373,7 +1376,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
                 var last = toks[toks.length - 1];
                 var prev2 = toks.length > 1 ? toks[toks.length - 2].ch : "";
                 var hy = GLUE.isHyphen(last.ch) && GLUE.isLetter(prev2);
-                if (!join || GLUE.keepBreak(pl[k])) toks.push({ ch: "\u0003", a: null });
+                if (!join || GLUE.keepBreak(pl[k], opt)) toks.push({ ch: "\u0003", a: null });
                 else if (hy) { if (opt.hyph && GLUE.isLower(lt[0].ch)) toks.pop(); }
                 else toks.push({ ch: " ", a: last.a });
             }

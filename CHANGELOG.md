@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.5
+- Наложенные друг на друга тексты больше не перемешиваются: готовый текст (многострочный и в области) разбирается как отдельный остров. Колонки внахлёст, рамка, уходящая под соседний текст, подпись поверх абзаца, вложенные блоки и строки, стоящие вперемежку, склеиваются каждый в свой текст. Строки из разных рамок не склеиваются в одну строку и не принимаются за таблицу.
+  Overlapping texts are no longer mixed: existing text (multi-line and area) is processed as a separate island. Overlapping columns, a frame that runs under the next text, a caption over a paragraph, nested blocks and interleaved lines each end up in their own text. Lines from different frames are never joined into one line or taken for a table.
+- Новая серия тестов `tests/matrixtests.js`: 176 сочетаний ширины рамки, кегля (6–48 pt), интерлиньяжа, отбивок и пустых абзацев плюс наложения — каждый случай тремя путями разбора.
+  New test suite `tests/matrixtests.js`: 176 combinations of frame width, type size (6–48 pt), leading, paragraph spacing and empty paragraphs plus overlaps, each run through three parsing paths.
+
 ## 1.2.4
 - Отбивки при перевёрстке готового текста совпадают с исходником: учитывается отбивка после абзаца, интерлиньяж пустых абзацев-распорок берётся у них самих, атрибуты абзаца читаются по символу строки, а не по номеру абзаца (в Illustrator номера могут сбиваться на пустых абзацах — отбивки доставались чужим абзацам).
   Paragraph spacing of re-laid-out text matches the original: space after is taken into account, empty spacer paragraphs keep their own leading, and paragraph attributes are read from the line's characters rather than by paragraph index (in Illustrator the index can drift on empty paragraphs, giving spacing to the wrong paragraph).

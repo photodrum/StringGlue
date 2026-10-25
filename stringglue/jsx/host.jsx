@@ -123,7 +123,7 @@ GLUE.analyze = function (opt) {
     GLUE.decorate(infos, deco, opt, false);
 
     if (opt.mode === "auto") {
-        var seg = GLUE.segment(GLUE.fragments(infos, opt), opt), bl = [], nP = 0, bb = { l: 1e9, t: -1e9, r: -1e9, b: 1e9 };
+        var seg = GLUE.segAll(infos, opt), bl = [], nP = 0, bb = { l: 1e9, t: -1e9, r: -1e9, b: 1e9 };
         for (i = 0; i < seg.blocks.length; i++) {
             var B = seg.blocks[i], g = GLUE.blockBounds(B);
             nP += B.paras.length;
@@ -241,7 +241,7 @@ GLUE.finish = function (doc, frames, created, opt) {
 };
 
 GLUE.runAuto = function (doc, frames, infos, opt) {
-    var seg = GLUE.segment(GLUE.fragments(infos, opt), opt), created = [], nChars = 0, i;
+    var seg = GLUE.segAll(infos, opt), created = [], nChars = 0, i;
     if (!seg.blocks.length) return "ERR:" + GLUE.t("fail");
     for (i = 0; i < infos.length; i++) nChars += infos[i].vis;
     for (i = 0; i < seg.blocks.length; i++) {
@@ -252,6 +252,54 @@ GLUE.runAuto = function (doc, frames, infos, opt) {
     GLUE.finish(doc, frames, created, opt);
     return "OK:" + GLUE.n(nChars, "chars") + " → " + GLUE.n(created.length, "texts") +
         (seg.tRows ? ", " + GLUE.t("table") + " " + seg.tRows + "×" + seg.tCols : "") + GLUE.skipNote();
+};
+
+GLUE.box = function (it) { return [it.left, it.base + it.size * 0.8, it.right, it.base - it.size * 0.25]; };
+GLUE.hits = function (a, b) { return Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 0.5 && Math.min(a[1], b[1]) - Math.max(a[3], b[3]) > 0.5; };
+GLUE.grow = function (u, b) {
+    if (!u.box) { u.box = b.slice(0); return; }
+    u.box[0] = Math.min(u.box[0], b[0]); u.box[1] = Math.max(u.box[1], b[1]); u.box[2] = Math.max(u.box[2], b[2]); u.box[3] = Math.min(u.box[3], b[3]);
+};
+GLUE.pools = function (infos) {
+    var units = [], byFr = [], free = { items: [], free: true }, over = { items: [] }, i, j, u;
+    for (i = 0; i < infos.length; i++) {
+        var it = infos[i];
+        if (!it.ready || !it.fr) continue;
+        u = null;
+        for (j = 0; j < byFr.length; j++) if (byFr[j].fr === it.fr) { u = byFr[j]; break; }
+        if (!u) { u = { fr: it.fr, items: [] }; byFr.push(u); units.push(u); try { GLUE.grow(u, it.fr.geometricBounds); } catch (e) {} }
+        u.items.push(it); GLUE.grow(u, GLUE.box(it));
+    }
+    for (i = 0; i < infos.length; i++) {
+        if (infos[i].ready && infos[i].fr) continue;
+        var bx = GLUE.box(infos[i]), inside = false;
+        for (j = 0; j < byFr.length && !inside; j++) if (GLUE.hits(bx, byFr[j].box)) inside = true;
+        if (inside) { over.items.push(infos[i]); GLUE.grow(over, bx); } else free.items.push(infos[i]);
+    }
+    if (over.items.length) units.push(over);
+    var pools = [{ units: [], items: free.items }];
+    for (i = 0; i < units.length; i++) {
+        u = units[i];
+        for (j = 0; j < pools.length; j++) {
+            var ok = true;
+            for (var k = 0; k < pools[j].units.length && ok; k++) if (GLUE.hits(u.box, pools[j].units[k].box)) ok = false;
+            if (ok) break;
+        }
+        if (j === pools.length) pools.push({ units: [], items: [] });
+        pools[j].units.push(u);
+        pools[j].items = pools[j].items.concat(u.items);
+    }
+    return pools;
+};
+GLUE.segAll = function (infos, opt) {
+    var pools = GLUE.pools(infos), out = { blocks: [], tRows: 0, tCols: 0 }, i, j;
+    for (i = 0; i < pools.length; i++) {
+        if (!pools[i].items.length) continue;
+        var sg = GLUE.segment(GLUE.fragments(pools[i].items, opt), opt);
+        for (j = 0; j < sg.blocks.length; j++) out.blocks.push(sg.blocks[j]);
+        if (sg.tRows > out.tRows) { out.tRows = sg.tRows; out.tCols = sg.tCols; }
+    }
+    return out;
 };
 
 GLUE.fragments = function (infos, opt) {
@@ -271,7 +319,8 @@ GLUE.fragments = function (infos, opt) {
         var lg = GLUE.letterGap(it);
         var frags = [], cur = [it[0]], right = it[0].right;
         for (q = 1; q < it.length; q++) {
-            if (it[q].left - right > (lg + opt.col) * Math.min(it[q].size, it[q - 1].size)) { frags.push(cur); cur = []; }
+            var other = (it[q].ready || it[q - 1].ready) && it[q].fr !== it[q - 1].fr;
+            if (other || it[q].left - right > (lg + opt.col) * Math.min(it[q].size, it[q - 1].size)) { frags.push(cur); cur = []; right = -1e9; }
             cur.push(it[q]);
             if (it[q].right > right) right = it[q].right;
         }
@@ -659,9 +708,11 @@ GLUE.frameInfos = function (fr, o, precise) {
         var one = precise ? GLUE.frameInfo(fr, o) : GLUE.quickInfo(fr);
         return one ? [one] : [];
     }
-    if (precise) { try { return GLUE.explode(fr, o); } catch (e) {} }
-    try { return GLUE.explodeQuick(fr, o, precise); } catch (e1) {}
-    return GLUE.explodeQuick(fr, o, false);
+    var out = null;
+    if (precise) { try { out = GLUE.explode(fr, o); } catch (e) { out = null; } }
+    if (!out) { try { out = GLUE.explodeQuick(fr, o, precise); } catch (e1) { out = GLUE.explodeQuick(fr, o, false); } }
+    for (var i = 0; i < out.length; i++) out[i].ready = true;
+    return out;
 };
 
 GLUE.WS = /[\s\u0003]/;

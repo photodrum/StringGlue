@@ -8,7 +8,7 @@ const ENUMS = {
   TextType: { POINTTEXT: 'POINTTEXT', AREATEXT: 'AREATEXT', PATHTEXT: 'PATHTEXT' },
   TextOrientation: { HORIZONTAL: 'H', VERTICAL: 'V' },
   FirstBaselineType: { FIXED: 'FIXED' },
-  ElementPlacement: { PLACEBEFORE: 'PLACEBEFORE' },
+  ElementPlacement: { PLACEBEFORE: 'PLACEBEFORE', PLACEATBEGINNING: 'PLACEATBEGINNING' },
   AutoKernType: { AUTO: 'AUTO', METRICSROMANONLY: 'MRO' },
 };
 
@@ -71,8 +71,8 @@ function makeChars(frame) {
 }
 
 function newFrame(kind, extra) {
-  const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false,
-    remove() { this.removed = true; }, move() {},
+  const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, story: { textFrames: { length: 1 } },
+    remove() { this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
     duplicate() { const d = newFrame(this.kind, { dyn: this.dyn, anchor: this.anchor && this.anchor.slice(), textPath: this.textPath && Object.assign({}, this.textPath),
         wraps: this.wraps && new Set(this.wraps), layer: this.layer, parent: this.parent });
       d.paraAttrs = this.paraAttrs.map(a => Object.assign({}, a));
@@ -147,21 +147,23 @@ function srcFrame(text, x, base, a, layer) {
   return f;
 }
 
-function makeApp(frames) {
+function makeApp(frames, env = {}) {
   const created = [];
-  const layer = { locked: false, visible: true,
-    pathItems: { rectangle: (top, left, w, h) => ({ top, left, width: w, height: h, geometricBounds: [left, top, left + w, top - h] }) },
-    textFrames: {
-      pointText: ([x, y]) => { const f = newFrame('POINTTEXT', { anchor: [x, y], created: true }); created.push(f); return f; },
-      areaText: rect => { const f = newFrame('AREATEXT', { textPath: rect, created: true }); created.push(f); return f; },
-    } };
+  const mkLayer = (name, o = {}) => { const L = Object.assign({ name, locked: false, visible: true }, o);
+    L.pathItems = { rectangle: (top, left, w, h) => ({ top, left, width: w, height: h, geometricBounds: [left, top, left + w, top - h] }) };
+    L.textFrames = {
+      pointText: ([x, y]) => { const f = newFrame('POINTTEXT', { anchor: [x, y], created: true, layer: L, dyn: true }); created.push(f); return f; },
+      areaText: rect => { const f = newFrame('AREATEXT', { textPath: rect, created: true, layer: L, dyn: true, wraps: new Set() }); created.push(f); return f; },
+    };
+    return L; };
+  const layer = mkLayer('Layer 1');
   frames.forEach(f => { f.layer = layer; f.parent = layer; });
-  const layers = [layer];
+  // env.above: слои над слоем с текстом, сверху вниз, например [{ name: 'Плашки' }, { name: 'Замок', locked: true }]
+  const layers = [...(env.above || []).map(o => mkLayer(o.name, o)), layer];
   layers.add = () => { const L = { name: '', locked: false, visible: true, printable: true, rects: [], groups: [],
     pathItems: { rectangle: (t, l, w, h) => { const r = { top: t, left: l, width: w, height: h }; L.rects.push(r); return r; } },
     groupItems: { add: () => { const g = { paths: [], pathItems: { add: () => { const q = { setEntirePath(pts) { this.pts = pts; } }; g.paths.push(q); return q; } } }; L.groups.push(g); return g; } },
     remove() { layers.splice(layers.indexOf(L), 1); } }; layers.unshift(L); return L; };
-  layer.name = 'Layer 1';
   const doc = { name: 'test.ai', selection: frames, activeLayer: layer, layers };
   return { app: { documents: { length: 1 }, activeDocument: doc }, created, doc };
 }
@@ -185,8 +187,8 @@ function layout(tf) {
   return out;
 }
 
-function run(frames, opt) {
-  const { app, created, doc } = makeApp(frames);
+function run(frames, opt, env) {
+  const { app, created, doc } = makeApp(frames, env);
   const ctx = Object.assign({ app, console, RGBColor: function () {}, StrokeCap: { BUTTENDCAP: 'BUTT' } }, ENUMS);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(HOST, 'utf8').replace(/^\s+/, ''), ctx);

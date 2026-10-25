@@ -202,8 +202,8 @@ const cards = () => [areaText([
   { lines: ['PAPAINA'], attrs: st(16, 'Bold'), leading: 22 },
   { lines: ['Oczyszczanie oparte na działaniu', 'enzymów oraz kontrola'], attrs: st(16), leading: 22 }],
   { left: 0, top: 811, width: 300, height: 400 })];
-S('Готовый текст с пустыми абзацами между карточками', cards, { blocks: 2, paras: 2, keepStyle: true });
-S('То же, если точный разбор недоступен (запасной путь)', cards, { blocks: 2, env: { noDup: true }, keepStyle: true });
+S('Готовый текст с пустыми абзацами между карточками', cards, { blocks: 1, paras: 4, keepStyle: true });
+S('То же, если точный разбор недоступен (запасной путь)', cards, { blocks: 1, env: { noDup: true }, keepStyle: true });
 S('Пустой первый абзац, запасной путь', () => [areaText([{ lines: [''], attrs: st(12), leading: 16 }, { lines: body, attrs: st(12), leading: 16 }],
   { left: 0, top: 809.6, width: 360, height: 120 })], { blocks: 1, env: { noDup: true } });
 
@@ -219,9 +219,9 @@ const cards2 = () => [areaText([
   { lines: ['Medical Herbs, Active i', 'Lavendersept łączą ekstrakty', 'roślinne, olejki eteryczne oraz', 'składniki wspierające świeżość,',
             'pomagając utrzymać komfort', 'dziąseł i codzienną świeżość jamy', 'ustnej.'], attrs: st(13, 'DIN Regular', GRAY), leading: 20, spaceBefore: 6 }],
   { left: 0, top: 811, width: 240, height: 600 })];
-S('Карточки 25.10: живой Illustrator — оформление и исходник', cards2, { blocks: 2, env: { live: true }, keepStyle: true, allRemoved: true });
-S('Карточки 25.10: обычный путь', cards2, { blocks: 2, keepStyle: true, allRemoved: true });
-S('Карточки 25.10: запасной путь', cards2, { blocks: 2, env: { noDup: true }, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: живой Illustrator — оформление и исходник', cards2, { blocks: 1, env: { live: true }, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: обычный путь', cards2, { blocks: 1, keepStyle: true, allRemoved: true });
+S('Карточки 25.10: запасной путь', cards2, { blocks: 1, env: { noDup: true }, keepStyle: true, allRemoved: true });
 S('Карточки 25.10: живой Illustrator, «Сохранить строки»', cards2, { mode: 'lines', env: { live: true }, keepStyle: true, allRemoved: true });
 S('Готовый точечный текст: живой Illustrator', () => [
   pointText([{ lines: ['Заголовок раздела'], attrs: st(20, 'Bold'), leading: 24 },
@@ -265,21 +265,42 @@ S('Четыре карточки 25.10: запасной путь, пустые 
 
 // исходный текст в области, как его раскладывает Illustrator: для первой строки каждого непустого абзаца —
 // базовая линия и расстояние от предыдущей видимой строки (выход в имитации не переносится, поэтому сравниваем зазоры)
-function srcParaGaps(f) {
-  const lines = []; let cur = [], ps = true, pi = 0;
-  f.chars.forEach((c, i) => { const br = c.contents === '\r', wr = f.wraps && f.wraps.has(i);
-    if (br || wr) { cur.push(c); lines.push({ chars: cur, ps, pi }); cur = []; ps = br; if (br) pi++; } else cur.push(c); });
-  lines.push({ chars: cur, ps, pi });
-  const first = f.chars.find(c => c.contents.trim()); let y = f.textPath.top - first.attrs.size * 0.8, prev = null; const out = [];
-  lines.forEach((L, i) => {
-    if (i > 0) { y -= Math.max(...L.chars.map(c => c.attrs.autoLeading ? c.attrs.size * 1.2 : c.attrs.leading));
-      if (L.ps) y -= (f.paraAttrs[L.pi].spaceBefore || 0) + (f.paraAttrs[L.pi - 1].spaceAfter || 0); }
-    const vis = L.chars.some(c => /^[^\s\u0003]$/.test(c.contents));
-    if (L.ps && vis) out.push({ y: +y.toFixed(2), gap: prev === null ? null : +(prev - y).toFixed(2) });
-    if (vis) prev = y;
+function srcParaGaps(fs) {
+  const all = [];
+  (Array.isArray(fs) ? fs : [fs]).forEach(f => {
+    const lines = []; let cur = [], ps = true, pi = 0;
+    f.chars.forEach((c, i) => { const br = c.contents === '\r', wr = f.wraps && f.wraps.has(i);
+      if (br || wr) { cur.push(c); lines.push({ chars: cur, ps, pi }); cur = []; ps = br; if (br) pi++; } else cur.push(c); });
+    lines.push({ chars: cur, ps, pi });
+    const first = f.chars.find(c => c.contents.trim());
+    let y = f.textPath.top - (f.firstBaselineMin !== undefined ? f.firstBaselineMin : first.attrs.size * 0.8);
+    lines.forEach((L, i) => {
+      if (i > 0) { y -= Math.max(...L.chars.map(c => c.attrs.autoLeading ? c.attrs.size * 1.2 : c.attrs.leading));
+        if (L.ps) y -= (f.paraAttrs[L.pi].spaceBefore || 0) + (f.paraAttrs[L.pi - 1].spaceAfter || 0); }
+      const vis = L.chars.some(c => /^[^\s\u0003]$/.test(c.contents));
+      if (vis) all.push({ y, ps: L.ps || i === 0 });
+    });
   });
+  all.sort((a, b) => b.y - a.y);
+  const out = []; let prev = null;
+  all.forEach(l => { if (l.ps) out.push({ y: +l.y.toFixed(2), gap: prev === null ? null : +(prev - l.y).toFixed(2) }); prev = l.y; });
   return out;
 }
+// скриншот 25.10, четвёртая проверка: четыре карточки — четыре отдельных текста в области столбиком, зазоры между ними разные.
+// Все склеиваются в один текст (ни одна не «отваливается»), первая строка встаёт туда же, где была:
+// у исходных рамок своя первая базовая линия (9 pt от верха), а не оценка плагина (0,8 кегля).
+const stack4 = () => { const B = st(13, 'DIN Bold'), R = st(13, 'DIN Regular'); let top = 900; const out = [];
+  [['HYDROKSYAPATYT', ['Mineralne wsparcie przypominające', 'naturalne szkliwo, przeznaczone do', 'nadwrażliwością.'], 34],
+   ['PAPAINA', ['Oczyszczanie oparte na działaniu', 'enzymów oraz kontrola', 'codziennego stosowania.'], 46],
+   ['OLEJKI ETERYCZNE', ['Lawenda, rozmaryn, tymianek,', 'dziąseł w codziennej pielęgnacji.'], 58],
+   ['EKSTRAKTY ROŚLINNE', ['Szałwia, głóg, rumianek i inne', 'portfolio.'], 0]].forEach(([h, body, gapAfter]) => {
+    const f = areaText([{ lines: [h], attrs: B, leading: 20 }, { lines: body, attrs: R, leading: 20, spaceBefore: 6 }], { left: 0, top, width: 250, height: 20 + body.length * 20 + 10 });
+    f.firstBaseline = 'FIXED'; f.firstBaselineMin = 9;
+    out.push(f); top -= 9 + 20 * body.length + 6 + gapAfter + 20; });
+  return out; };
+S('Четыре карточки отдельными рамками: склеиваются все, обычный путь', stack4, { blocks: 1, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
+S('Четыре карточки отдельными рамками: живой Illustrator', stack4, { blocks: 1, env: { live: true, skipEmpty: true }, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
+S('Четыре карточки отдельными рамками: запасной путь', stack4, { blocks: 1, env: { noDup: true, skipEmpty: true }, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
 let fail = 0;
 const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {
@@ -302,7 +323,7 @@ for (const sc of T) {
     if (r.junk) msgs.push(`оставлены лишние объекты: ${r.junk}`);
     if (E.keepStyle) { const os = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).map(c => c.contents + styleOf(c)).sort().join('|');
       if (os !== srcStyle) { const bad = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).slice(0, 3).map(styleOf); msgs.push('оформление потеряно: ' + bad.join(', ')); } }
-    if (E.paraBase) { const want = srcParaGaps(frames[0]), got = [];
+    if (E.paraBase) { const want = srcParaGaps(E.paraBase === 'all' ? frames : frames[0]), got = [];
       out.forEach(t => H.layout(t).forEach((l, i, a) => got.push({ y: +l.y.toFixed(2), gap: i ? +(a[i - 1].y - l.y).toFixed(2) : null })));
       const bad = want.length !== got.length || want.some((w, i) => got[i].gap === null ? Math.abs(w.y - got[i].y) > 0.35 : Math.abs(w.gap - got[i].gap) > 0.35);
       if (bad) msgs.push(`абзацы (базовая/зазор): ${JSON.stringify(got.map(g => g.gap === null ? g.y : g.gap))}, ждали ${JSON.stringify(want.map((w, i) => got[i] && got[i].gap === null ? w.y : w.gap))}`); }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.8
+- Готовые тексты, стоящие столбиком (карточки отдельными рамками), склеиваются в один текст целиком — ни одна карточка не отваливается из-за чуть большего зазора. Один исходный текст в области больше не режется на несколько. Отдельными остаются только рамки, далеко разнесённые по вертикали (больше 12 кеглей).
+  Existing texts stacked in a column (cards in separate frames) are glued into one text as a whole — no card falls off because of a slightly larger gap. One source area text is no longer cut into several. Only frames far apart vertically (more than 12 type sizes) stay separate.
+- Текст после склейки больше не смещается вниз: новая рамка повторяет верх исходной и её настройки первой базовой линии и внутреннего отступа, вместо оценки положения первой строки.
+  Text no longer shifts down after gluing: the new frame repeats the original frame's top and its first-baseline and inset settings instead of estimating where the first line sits.
+
 ## 1.2.7
 - Готовый текст в области с переносами по ширине рамки всегда собирается текстом в области, даже если строки заметно короче рамки (раньше такие карточки становились точечным текстом с разрывами строк).
   Existing area text that wraps to its frame is always rebuilt as area text, even when its lines are much shorter than the frame (such cards used to become point text with line breaks).

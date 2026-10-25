@@ -300,11 +300,30 @@ GLUE.pools = function (infos) {
     }
     return pools;
 };
+GLUE.readyChains = function (pool, opt) {
+    var i, j, it = pool.items;
+    if (!pool.units.length) return null;
+    for (i = 0; i < it.length; i++) if (!it[i].ready) return null;
+    var rows = GLUE.fragments(it, opt), lines = [];
+    for (i = 0; i < rows.length; i++) { if (rows[i].frags.length !== 1) return null; lines.push(rows[i].frags[0]); }
+    var blocks = [], cur = null;
+    for (i = 0; i < lines.length; i++) {
+        var L = lines[i], fr = L.items[0].fr;
+        if (cur) {
+            var P = cur.lines[cur.lines.length - 1], gap = P.ref - L.ref, sz = Math.max(P.fsize || P.size, L.fsize || L.size);
+            if (P.items[0].fr !== fr && gap > 12 * sz) cur = null;
+        }
+        if (!cur) { cur = { lines: [] }; blocks.push(cur); }
+        cur.lines.push(L);
+    }
+    GLUE.finishBlocks(blocks, opt);
+    return { blocks: blocks, tRows: 0, tCols: 0 };
+};
 GLUE.segAll = function (infos, opt) {
     var pools = GLUE.pools(infos), out = { blocks: [], tRows: 0, tCols: 0 }, i, j;
     for (i = 0; i < pools.length; i++) {
         if (!pools[i].items.length) continue;
-        var sg = GLUE.segment(GLUE.fragments(pools[i].items, opt), opt);
+        var sg = GLUE.readyChains(pools[i], opt) || GLUE.segment(GLUE.fragments(pools[i].items, opt), opt);
         for (j = 0; j < sg.blocks.length; j++) out.blocks.push(sg.blocks[j]);
         if (sg.tRows > out.tRows) { out.tRows = sg.tRows; out.tCols = sg.tCols; }
     }
@@ -516,7 +535,12 @@ GLUE.segment = function (rows, opt) {
         for (j = 0; j < parts.length; j++) split.push(parts[j]);
     }
     blocks = split;
+    GLUE.finishBlocks(blocks, opt);
+    return { blocks: blocks, tRows: tRows, tCols: table ? cols.length : 0 };
+};
 
+GLUE.finishBlocks = function (blocks, opt) {
+    var i, j;
     for (i = 0; i < blocks.length; i++) {
         var B = blocks[i];
         B.lead = GLUE.globalLead(B.lines);
@@ -540,7 +564,6 @@ GLUE.segment = function (rows, opt) {
         var lay = GLUE.paraLayout(B);
         B.kind = B.cell ? "c" : ((wrapped || lay.mixed) ? "a" : "p");
     }
-    return { blocks: blocks, tRows: tRows, tCols: table ? cols.length : 0 };
 };
 
 GLUE.paraLayout = function (B) {
@@ -722,6 +745,7 @@ GLUE.frameInfos = function (fr, o, precise) {
     if (precise) { try { out = GLUE.explode(fr, o); } catch (e) { out = null; } }
     if (!out) { try { out = GLUE.explodeQuick(fr, o, precise); } catch (e1) { out = GLUE.explodeQuick(fr, o, false); } }
     for (var i = 0; i < out.length; i++) out[i].ready = true;
+    if (out.length) out[0].frFirst = true;
     return out;
 };
 
@@ -795,7 +819,7 @@ GLUE.explode = function (fr, o) {
             if (!ri.info) continue;
             var g = GLUE.measureLine(P, Ln.start, Ln.len, pa, paraStart);
             ri.info.base = y; ri.info.left = g[0]; ri.info.right = g[2]; ri.info.fr = fr; ri.info.hb = Ln.hb;
-            if (fb) { ri.info.frL = fb[0]; ri.info.frR = fb[2]; }
+            if (fb) { ri.info.frL = fb[0]; ri.info.frR = fb[2]; ri.info.frT = fb[1]; }
             out.push(ri.info);
         }
     } finally { GLUE.drop(P); }
@@ -935,7 +959,7 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         if (just === Justification.CENTER) l = (b[0] + b[2]) / 2 - w / 2;
         if (just === Justification.RIGHT) l = b[2] - w;
         out.push({ toks: tk, size: A.size, base: y, left: l, right: l + w, text: t, vis: vis, font: A.font, hb: parts[i].hb,
-                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr, frL: isArea ? b[0] : undefined, frR: isArea ? b[2] : undefined });
+                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr, frL: isArea ? b[0] : undefined, frR: isArea ? b[2] : undefined, frT: isArea ? b[1] : undefined });
     }
     if (withAttrs) {
         if (out.length && !nOk) throw new Error(GLUE.t("attrs"));
@@ -1378,11 +1402,23 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
                 if (its[k].frR > fR) fR = its[k].frR;
             }
         }
-        if (allF && fR - fL > s0 && minL >= fL - s0 && maxR <= fR + s0) { left = fL; width = fR - fL; }
-        var height = (all[0].ref - all[all.length - 1].ref) + asc + gLead * 3 + s0;
-        var rect = host.pathItems.rectangle(all[0].ref + asc, left, width, height);
+        var top = all[0].ref + asc, srcF = null;
+        if (allF && fR - fL > s0 && minL >= fL - s0 && maxR <= fR + s0) {
+            left = fL; width = fR - fL;
+            var f0 = all[0].items;
+            for (k = 0; k < f0.length; k++) if (f0[k].frFirst && f0[k].frT !== undefined && f0[k].fr) { srcF = f0[k].fr; top = f0[k].frT; break; }
+        }
+        var height = (top - all[all.length - 1].ref) + gLead * 3 + s0;
+        var rect = host.pathItems.rectangle(top, left, width, height);
         tf = host.textFrames.areaText(rect);
-        try { tf.firstBaseline = FirstBaselineType.FIXED; tf.firstBaselineMin = asc; } catch (e) {}
+        var fbDone = false;
+        if (srcF) {
+            try {
+                if (srcF.firstBaseline !== undefined) { tf.firstBaseline = srcF.firstBaseline; tf.firstBaselineMin = srcF.firstBaselineMin; fbDone = true; }
+                if (srcF.insetSpacing !== undefined) tf.insetSpacing = srcF.insetSpacing;
+            } catch (eS) { fbDone = false; }
+        }
+        if (!fbDone) { top = all[0].ref + asc; try { rect.top = top; tf.textPath.top = top; } catch (eT) {} try { tf.firstBaseline = FirstBaselineType.FIXED; tf.firstBaselineMin = asc; } catch (e) {} }
     } else {
         var ax = minL;
         if (just === Justification.CENTER) ax = (minL + maxR) / 2;
@@ -1415,7 +1451,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
         } catch (e3) {}
     }
     if (opt.mode !== "single" && tr.characters.length === toks.length) GLUE.lineLeading(tr, spans, paras);
-    if (kind === "area") GLUE.fitHeight(tf, all, asc, gLead);
+    if (kind === "area") GLUE.fitHeight(tf, all, gLead);
     try { tf.move(host, ElementPlacement.PLACEATBEGINNING); } catch (e4) {}
     return tf;
 };
@@ -1479,11 +1515,11 @@ GLUE.applyByMatch = function (tr, toks, dom, opt) {
     }
 };
 
-GLUE.fitHeight = function (tf, all, asc, lead) {
+GLUE.fitHeight = function (tf, all, lead) {
     try {
         var path = tf.textPath, last = all[all.length - 1];
-        var need = asc + (all[0].ref - last.ref) + last.size * 0.35;
         var t0 = path.top, l0 = path.left;
+        var need = (t0 - last.ref) + last.size * 0.35;
         if (need > 0 && need < path.height) { path.height = need; path.top = t0; path.left = l0; }
         for (var k = 0; k < 40 && GLUE.overflows(tf, all.length); k++) {
             path.height = path.height + lead; path.top = t0; path.left = l0;

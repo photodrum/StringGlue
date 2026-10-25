@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.9
+- Принудительный разрыв строки (Shift+Enter) в готовом тексте в области сохраняется — раньше при склейке он заменялся пробелом, а в запасном разборе строки слипались без пробела. В точечном тексте ручные разрывы строк по-прежнему перевёрстываются в абзац.
+  A forced line break (Shift+Enter) in existing area text is kept — it used to be replaced with a space, and the fallback parser glued the lines without a space. In point text, manual line breaks are still re-laid out into a paragraph.
+
 ## 1.2.8
 - Готовые тексты, стоящие столбиком (карточки отдельными рамками), склеиваются в один текст целиком — ни одна карточка не отваливается из-за чуть большего зазора. Один исходный текст в области больше не режется на несколько. Отдельными остаются только рамки, далеко разнесённые по вертикали (больше 12 кеглей).
   Existing texts stacked in a column (cards in separate frames) are glued into one text as a whole — no card falls off because of a slightly larger gap. One source area text is no longer cut into several. Only frames far apart vertically (more than 12 type sizes) stay separate.

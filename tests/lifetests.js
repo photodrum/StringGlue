@@ -301,6 +301,17 @@ const stack4 = () => { const B = st(13, 'DIN Bold'), R = st(13, 'DIN Regular'); 
 S('Четыре карточки отдельными рамками: склеиваются все, обычный путь', stack4, { blocks: 1, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
 S('Четыре карточки отдельными рамками: живой Illustrator', stack4, { blocks: 1, env: { live: true, skipEmpty: true }, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
 S('Четыре карточки отдельными рамками: запасной путь', stack4, { blocks: 1, env: { noDup: true, skipEmpty: true }, keepStyle: true, paraBase: 'all', frame: [0, 250], allRemoved: true });
+// Shift+Enter (принудительный разрыв строки, \u0003) внутри текста в области поставлен сознательно — сохраняется.
+// В точечном тексте ручные разрывы по-прежнему перевёрстываются (сценарий «Готовый точечный текст: заголовок + абзац…»).
+const forced = () => { const f = areaText([{ lines: ['KONTAKT'], attrs: st(13, 'Bold'), leading: 18 },
+  { lines: ['ul. Zielona 5,', '00-001 Warszawa', 'Tekst który się zawija na', 'kolejną linię w ramce.'], attrs: st(12), leading: 16 }],
+  { left: 0, top: 800, width: 200, height: 200 });
+  [...f.wraps].sort((a, b) => a - b).slice(0, 2).forEach(i => { f.chars[i].contents = '\u0003'; f.wraps.delete(i); }); return [f]; };
+const forcedText = 'KONTAKT\rul. Zielona 5,\u000300-001 Warszawa\u0003Tekst który się zawija na kolejną linię w ramce.';
+S('Shift+Enter в тексте в области сохраняется, обычный путь', forced, { blocks: 1, text: forcedText, keepStyle: true });
+S('Shift+Enter в тексте в области сохраняется, живой Illustrator', forced, { blocks: 1, text: forcedText, env: { live: true, skipEmpty: true }, keepStyle: true });
+S('Shift+Enter в тексте в области сохраняется, запасной путь', forced, { blocks: 1, text: forcedText, env: { noDup: true, skipEmpty: true }, keepStyle: true });
+S('Shift+Enter в тексте в области, режим «Абзац в области»', forced, { mode: 'area', text: forcedText });
 let fail = 0;
 const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {

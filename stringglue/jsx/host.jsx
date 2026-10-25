@@ -819,7 +819,7 @@ GLUE.explode = function (fr, o) {
             if (!ri.info) continue;
             var g = GLUE.measureLine(P, Ln.start, Ln.len, pa, paraStart);
             ri.info.base = y; ri.info.left = g[0]; ri.info.right = g[2]; ri.info.fr = fr; ri.info.hb = Ln.hb;
-            if (fb) { ri.info.frL = fb[0]; ri.info.frR = fb[2]; ri.info.frT = fb[1]; }
+            if (fb) { ri.info.frL = fb[0]; ri.info.frR = fb[2]; ri.info.frT = fb[1]; ri.info.area = true; }
             out.push(ri.info);
         }
     } finally { GLUE.drop(P); }
@@ -894,8 +894,12 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
                 if (t0.length) { at = raw.indexOf(t0, cur); }
                 else at = cur < raw.length && brk(raw.charAt(cur)) && i > 0 ? cur + 1 : cur;
                 if (at < 0) { parts = []; break; }
-                var pc = at > 0 ? raw.charAt(at - 1) : "";
-                parts.push({ t: t0, at: at, hb: i ? (pc === "\u0003" ? "s" : (pc === "\r" || pc === "\n" ? "p" : "w")) : null, p: paraOf(at) });
+                var pc = at > 0 ? raw.charAt(at - 1) : "", seg = t0.split("\u0003"), sa = at;
+                for (var sg = 0; sg < seg.length; sg++) {
+                    var hbS = sg ? "s" : (parts.length ? (pc === "\u0003" ? "s" : (pc === "\r" || pc === "\n" ? "p" : "w")) : null);
+                    parts.push({ t: seg[sg], at: sa, hb: hbS, p: paraOf(sa) });
+                    sa += seg[sg].length + 1;
+                }
                 cur = at + t0.length;
             }
         }
@@ -959,7 +963,7 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         if (just === Justification.CENTER) l = (b[0] + b[2]) / 2 - w / 2;
         if (just === Justification.RIGHT) l = b[2] - w;
         out.push({ toks: tk, size: A.size, base: y, left: l, right: l + w, text: t, vis: vis, font: A.font, hb: parts[i].hb,
-                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr, frL: isArea ? b[0] : undefined, frR: isArea ? b[2] : undefined, frT: isArea ? b[1] : undefined });
+                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr, frL: isArea ? b[0] : undefined, frR: isArea ? b[2] : undefined, frT: isArea ? b[1] : undefined, area: isArea });
     }
     if (withAttrs) {
         if (out.length && !nOk) throw new Error(GLUE.t("attrs"));
@@ -1343,6 +1347,11 @@ GLUE.detectJust = function (all) {
     return Justification.LEFT;
 };
 
+GLUE.keepBreak = function (L) {
+    if (L.hb !== "s") return false;
+    for (var i = 0; i < (L.items || []).length; i++) if (L.items[i].area) return true;
+    return false;
+};
 GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     var all = [], i, k;
     for (i = 0; i < paras.length; i++) for (k = 0; k < paras[i].lines.length; k++) all.push(paras[i].lines[k]);
@@ -1364,7 +1373,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
                 var last = toks[toks.length - 1];
                 var prev2 = toks.length > 1 ? toks[toks.length - 2].ch : "";
                 var hy = GLUE.isHyphen(last.ch) && GLUE.isLetter(prev2);
-                if (!join) toks.push({ ch: "\u0003", a: null });
+                if (!join || GLUE.keepBreak(pl[k])) toks.push({ ch: "\u0003", a: null });
                 else if (hy) { if (opt.hyph && GLUE.isLower(lt[0].ch)) toks.pop(); }
                 else toks.push({ ch: " ", a: last.a });
             }

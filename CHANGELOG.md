@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.7
+- Готовый текст в области с переносами по ширине рамки всегда собирается текстом в области, даже если строки заметно короче рамки (раньше такие карточки становились точечным текстом с разрывами строк).
+  Existing area text that wraps to its frame is always rebuilt as area text, even when its lines are much shorter than the frame (such cards used to become point text with line breaks).
+- Отдельные мелкие тексты и буквы на уровне строк готового текста (значки, точки, подписи рядом) больше не утягивают его строки в «таблицу» — они разбираются отдельно.
+  Small separate texts and letters level with the lines of existing text (icons, dots, captions next to it) no longer pull its lines into a “table” — they are processed separately.
+
 ## 1.2.6
 - Готовые тексты, стоящие рядом по горизонтали (сетка карточек, колонки), разбираются каждый отдельно и больше не режутся на ячейки «таблицы» по общим базовым линиям. Вместе склеиваются только рамки, стоящие друг под другом в одной колонке.
   Existing texts placed side by side (a grid of cards, columns) are processed separately and are no longer cut into “table” cells along shared baselines. Only frames stacked in one column are joined.

@@ -125,19 +125,20 @@ function grid(cols, rows, o = {}) {
   }
   return out;
 }
-function checkGrid(name, build, blocks) {
+function checkGrid(name, build, blocks, kinds) {
   for (const [pn, env] of PATHS) {
     total++;
     const msgs = [], fr = build();
     const a = H.analyzeOnly(fr, { mode: 'auto', gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }).ana;
     if (!a.blocks || a.blocks.length !== blocks || a.tRows) msgs.push(`анализ: блоков ${a.blocks && a.blocks.length}, таблица ${a.tRows}×${a.tCols}, ждали ${blocks} без таблицы`);
     if (!a.fonts) msgs.push('анализ: шрифтов 0');
+    if (kinds) { const k = {}; (a.blocks || []).forEach(b => k[b.k] = (k[b.k] || 0) + 1); for (const x in kinds) if (k[x] !== kinds[x]) msgs.push(`анализ: вид ${x} — ${k[x] || 0}, ждали ${kinds[x]} (${JSON.stringify(k)})`); }
     const fr2 = build(), r = H.run(fr2, { mode: 'auto', track: true, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }, env);
     if (!r.res.startsWith('OK:')) msgs.push(r.res);
     else {
       if (r.created.length !== blocks) msgs.push(`текстов ${r.created.length}, ждали ${blocks}`);
       const outText = r.created.map(t => norm(t.contents));
-      fr2.forEach(f => { if (!outText.includes(norm(f.srcParas.join(' ')))) msgs.push('текст рамки не собран целиком: «' + f.srcParas[0].slice(0, 30) + '»'); });
+      fr2.filter(f => f.srcParas && f.kind === 'AREATEXT').forEach(f => { if (!outText.includes(norm(f.srcParas.join(' ')))) msgs.push('текст рамки не собран целиком: «' + f.srcParas[0].slice(0, 30) + '»'); });
     }
     const u = [...new Set(msgs)].slice(0, 4);
     if (u.length) { fail++; console.log('✗ ' + name + ' [' + pn + ']\n    ' + u.join('\n    ')); }
@@ -146,4 +147,16 @@ function checkGrid(name, build, blocks) {
 checkGrid('Сетка 2×2 карточек', () => grid(2, 2), 4);
 checkGrid('Сетка 3×1, колонки с зазором 40 pt', () => grid(3, 1), 3);
 checkGrid('Сетка 2×2, кегль 9, узкий зазор между колонками 12 pt', () => grid(2, 2, { head: 10, body: 9, width: 238 }), 4);
+// скриншот 25.10, вторая сетка: строки заметно короче рамки (перенос по рамке шире текста),
+// маленький отдельный текст на уровне заголовка третьей карточки — не должен утянуть заголовок в «таблицу»
+checkGrid('Сетка 2×2: строки короче рамки и мелкий текст у заголовка', () => {
+  const g = grid(2, 2);
+  g.forEach(f => { const P = f.srcParas; f.textPath.width += 70; });
+  const t = pointText([{ lines: ['•'], attrs: st(8) }], 190, 900 - 330 - 11.2); t.srcParas = ['•'];
+  return [...g, t];
+}, 5, { a: 4, p: 1 });
+checkGrid('Сетка 2×2: мелкий текст справа от рамки на уровне заголовка', () => {
+  const g = grid(2, 2); const t = pointText([{ lines: ['•'], attrs: st(8) }], 222, 900 - 330 - 11.2); t.srcParas = ['•'];
+  return [...g, t];
+}, 5, { a: 4, p: 1 });
 console.log(`Сетки: итого ${total - fail}/${total}`);

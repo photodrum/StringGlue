@@ -261,28 +261,21 @@ GLUE.grow = function (u, b) {
     u.box[0] = Math.min(u.box[0], b[0]); u.box[1] = Math.max(u.box[1], b[1]); u.box[2] = Math.max(u.box[2], b[2]); u.box[3] = Math.min(u.box[3], b[3]);
 };
 GLUE.pools = function (infos) {
-    var units = [], byFr = [], free = { items: [], free: true }, over = { items: [] }, i, j, u;
+    var units = [], loose = [], i, j, k, u;
     for (i = 0; i < infos.length; i++) {
         var it = infos[i];
-        if (!it.ready || !it.fr) continue;
+        if (!it.ready || !it.fr) { loose.push(it); continue; }
         u = null;
-        for (j = 0; j < byFr.length; j++) if (byFr[j].fr === it.fr) { u = byFr[j]; break; }
-        if (!u) { u = { fr: it.fr, items: [] }; byFr.push(u); units.push(u); try { GLUE.grow(u, it.fr.geometricBounds); } catch (e) {} }
+        for (j = 0; j < units.length; j++) if (units[j].fr === it.fr) { u = units[j]; break; }
+        if (!u) { u = { fr: it.fr, items: [] }; units.push(u); try { GLUE.grow(u, it.fr.geometricBounds); } catch (e) {} }
         u.items.push(it); GLUE.grow(u, GLUE.box(it));
     }
-    for (i = 0; i < infos.length; i++) {
-        if (infos[i].ready && infos[i].fr) continue;
-        var bx = GLUE.box(infos[i]), inside = false;
-        for (j = 0; j < byFr.length && !inside; j++) if (GLUE.hits(bx, byFr[j].box)) inside = true;
-        if (inside) { over.items.push(infos[i]); GLUE.grow(over, bx); } else free.items.push(infos[i]);
-    }
-    if (over.items.length) units.push(over);
-    var pools = [{ units: [], items: free.items }];
+    var pools = [];
     for (i = 0; i < units.length; i++) {
         u = units[i];
         for (j = 0; j < pools.length; j++) {
             var ok = true;
-            for (var k = 0; k < pools[j].units.length && ok; k++) {
+            for (k = 0; k < pools[j].units.length && ok; k++) {
                 var w = pools[j].units[k].box;
                 if (GLUE.hits(u.box, w) || Math.min(u.box[2], w[2]) - Math.max(u.box[0], w[0]) <= 0.5) ok = false;
             }
@@ -291,6 +284,19 @@ GLUE.pools = function (infos) {
         if (j === pools.length) pools.push({ units: [], items: [] });
         pools[j].units.push(u);
         pools[j].items = pools[j].items.concat(u.items);
+    }
+    for (i = 0; i < loose.length; i++) {
+        var bx = GLUE.box(loose[i]);
+        for (j = 0; j < pools.length; j++) {
+            var fit = true;
+            for (k = 0; k < pools[j].units.length && fit; k++) {
+                var v = pools[j].units[k].box;
+                if (Math.min(bx[1], v[1]) - Math.max(bx[3], v[3]) > 0.5) fit = false;
+            }
+            if (fit) break;
+        }
+        if (j === pools.length) pools.push({ units: [], items: [] });
+        pools[j].items.push(loose[i]);
     }
     return pools;
 };
@@ -530,6 +536,7 @@ GLUE.segment = function (rows, opt) {
             for (k2 = 0; k2 < PL.length - 1; k2++) if (PL[k2].right - PL[k2].left < need * bw) full = false;
             if (full) wrapped = true;
         }
+        for (j = 0; j < B.lines.length && !wrapped; j++) if (B.lines[j].hb === "w") wrapped = true;
         var lay = GLUE.paraLayout(B);
         B.kind = B.cell ? "c" : ((wrapped || lay.mixed) ? "a" : "p");
     }

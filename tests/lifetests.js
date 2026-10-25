@@ -228,6 +228,58 @@ S('Готовый точечный текст: живой Illustrator', () => [
              { lines: body, attrs: st(12), leading: 16, spaceBefore: 8 }], 0, 800)
 ], { blocks: 1, paras: 2, env: { live: true }, keepStyle: true, allRemoved: true });
 
+// скриншот 25.10, вторая проверка: отбивка после заголовка (spaceAfter), пустые абзацы-распорки с мелким интерлиньяжем.
+// Базовые линии абзацев и ширина рамки должны совпасть с исходником — иначе меняются отбивки и переносы.
+const cards3 = () => { const f = areaText([
+  { lines: ['OCHRONA SZKLIWA'], attrs: st(13, 'DIN Bold'), leading: 20 },
+  { lines: ['Biocalcium, Ultracomplex i', 'Sensitive wspierają codzienną', 'pielęgnację ukierunkowaną na', 'komfortu.'], attrs: st(13, 'DIN Regular'), leading: 20 },
+  { lines: [''], attrs: st(13, 'DIN Regular'), leading: 9 },
+  { lines: ['PIELĘGNACJA DZIĄSEŁ I', 'ŚWIEŻOŚĆ'], attrs: st(13, 'DIN Bold'), leading: 20 },
+  { lines: ['Medical Herbs, Active i', 'Lavendersept łączą ekstrakty', 'ustnej.'], attrs: st(13, 'DIN Regular'), leading: 20 }],
+  { left: 0, top: 811, width: 240, height: 600 });
+  f.paraAttrs[0].spaceAfter = 7; f.paraAttrs[3].spaceAfter = 7; f.paraAttrs[2].spaceBefore = 4; return [f]; };
+S('Карточки 25.10: отбивки и ширина рамки, обычный путь', cards3, { keepStyle: true, paraBase: true, frame: [0, 240] });
+S('Карточки 25.10: отбивки и ширина рамки, живой Illustrator', cards3, { env: { live: true }, keepStyle: true, paraBase: true, frame: [0, 240] });
+S('Карточки 25.10: отбивки и ширина рамки, запасной путь', cards3, { env: { noDup: true }, keepStyle: true, paraBase: true, frame: [0, 240] });
+
+// скриншот 25.10, третья проверка: четыре карточки одним текстом в области, между ними пустые абзацы-распорки
+// разного интерлиньяжа, у заголовков отбивка после. Номера абзацев в Illustrator могут не совпадать с числом \r.
+const cards4 = () => { const B = st(13, 'DIN Bold'), R = st(13, 'DIN Regular'), E = (l) => ({ lines: [''], attrs: R, leading: l });
+  const f = areaText([
+    { lines: ['HYDROKSYAPATYT'], attrs: B, leading: 20 },
+    { lines: ['Mineralne wsparcie przypominające', 'naturalne szkliwo, przeznaczone do', 'nadwrażliwością.'], attrs: R, leading: 20 },
+    E(14), E(14),
+    { lines: ['PAPAINA'], attrs: B, leading: 20 },
+    { lines: ['Oczyszczanie oparte na działaniu', 'enzymów oraz kontrola', 'codziennego stosowania.'], attrs: R, leading: 20 },
+    E(30), E(30),
+    { lines: ['OLEJKI ETERYCZNE'], attrs: B, leading: 20 },
+    { lines: ['Lawenda, rozmaryn, tymianek,', 'dziąseł w codziennej pielęgnacji.'], attrs: R, leading: 20 },
+    E(30), E(30), E(30),
+    { lines: ['EKSTRAKTY ROŚLINNE'], attrs: B, leading: 20 },
+    { lines: ['Szałwia, głóg, rumianek i inne', 'portfolio.'], attrs: R, leading: 20 }],
+    { left: 0, top: 811, width: 250, height: 800 });
+  [0, 4, 8, 13].forEach(k => { f.paraAttrs[k].spaceAfter = 6; }); return [f]; };
+S('Четыре карточки 25.10: обычный путь', cards4, { keepStyle: true, paraBase: true, frame: [0, 250], allRemoved: true });
+S('Четыре карточки 25.10: живой Illustrator, пустые абзацы вне коллекции', cards4, { env: { live: true, skipEmpty: true }, keepStyle: true, paraBase: true, frame: [0, 250], allRemoved: true });
+S('Четыре карточки 25.10: запасной путь, пустые абзацы вне коллекции', cards4, { env: { noDup: true, skipEmpty: true }, keepStyle: true, paraBase: true, frame: [0, 250], allRemoved: true });
+
+// исходный текст в области, как его раскладывает Illustrator: для первой строки каждого непустого абзаца —
+// базовая линия и расстояние от предыдущей видимой строки (выход в имитации не переносится, поэтому сравниваем зазоры)
+function srcParaGaps(f) {
+  const lines = []; let cur = [], ps = true, pi = 0;
+  f.chars.forEach((c, i) => { const br = c.contents === '\r', wr = f.wraps && f.wraps.has(i);
+    if (br || wr) { cur.push(c); lines.push({ chars: cur, ps, pi }); cur = []; ps = br; if (br) pi++; } else cur.push(c); });
+  lines.push({ chars: cur, ps, pi });
+  const first = f.chars.find(c => c.contents.trim()); let y = f.textPath.top - first.attrs.size * 0.8, prev = null; const out = [];
+  lines.forEach((L, i) => {
+    if (i > 0) { y -= Math.max(...L.chars.map(c => c.attrs.autoLeading ? c.attrs.size * 1.2 : c.attrs.leading));
+      if (L.ps) y -= (f.paraAttrs[L.pi].spaceBefore || 0) + (f.paraAttrs[L.pi - 1].spaceAfter || 0); }
+    const vis = L.chars.some(c => /^[^\s\u0003]$/.test(c.contents));
+    if (L.ps && vis) out.push({ y: +y.toFixed(2), gap: prev === null ? null : +(prev - y).toFixed(2) });
+    if (vis) prev = y;
+  });
+  return out;
+}
 let fail = 0;
 const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {
@@ -250,6 +302,11 @@ for (const sc of T) {
     if (r.junk) msgs.push(`оставлены лишние объекты: ${r.junk}`);
     if (E.keepStyle) { const os = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).map(c => c.contents + styleOf(c)).sort().join('|');
       if (os !== srcStyle) { const bad = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003]$/.test(c.contents)).slice(0, 3).map(styleOf); msgs.push('оформление потеряно: ' + bad.join(', ')); } }
+    if (E.paraBase) { const want = srcParaGaps(frames[0]), got = [];
+      out.forEach(t => H.layout(t).forEach((l, i, a) => got.push({ y: +l.y.toFixed(2), gap: i ? +(a[i - 1].y - l.y).toFixed(2) : null })));
+      const bad = want.length !== got.length || want.some((w, i) => got[i].gap === null ? Math.abs(w.y - got[i].y) > 0.35 : Math.abs(w.gap - got[i].gap) > 0.35);
+      if (bad) msgs.push(`абзацы (базовая/зазор): ${JSON.stringify(got.map(g => g.gap === null ? g.y : g.gap))}, ждали ${JSON.stringify(want.map((w, i) => got[i] && got[i].gap === null ? w.y : w.gap))}`); }
+    if (E.frame) out.forEach(t => { const r = t.textPath; if (!r || Math.abs(r.left - E.frame[0]) > 0.01 || Math.abs(r.width - E.frame[1]) > 0.01) msgs.push(`рамка ${r && r.left}/${r && r.width}, ждали ${E.frame}`); });
     if (E.blocks !== undefined && out.length !== E.blocks) msgs.push(`текстов ${out.length}, ждали ${E.blocks}`);
     if (mode === 'auto' && E.blocks !== undefined && r.ana.blocks.length !== E.blocks) msgs.push(`анализ: блоков ${r.ana.blocks.length}, ждали ${E.blocks}`);
     if (E.kinds) { const k = {}; (r.ana.blocks || []).forEach(b => k[b.k] = (k[b.k] || 0) + 1);

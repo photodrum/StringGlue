@@ -690,7 +690,7 @@ GLUE.explode = function (fr, o) {
         else if (c0 === "\u0003") ends[nv] = "s";
         else if (!/\s/.test(c0)) nv++;
     }
-    var F = { ch: fr.textRange.characters, pars: null, map: null };
+    var F = { ch: fr.textRange.characters, pars: null, map: null, pm: GLUE.paraMap(src) }, fb = wasArea ? fr.geometricBounds : null;
     try { F.pars = fr.paragraphs; } catch (e0) {}
     try {
         P = GLUE.dup(fr);
@@ -719,7 +719,7 @@ GLUE.explode = function (fr, o) {
             var pIdx = fi >= 0 && fi < fpi.length ? fpi[fi] : (fi >= fpi.length ? pc : Math.max(prevPi, 0));
             var paraStart = i === 0 || Ln.hb === "p";
             var pa = null;
-            try { pa = F.pars[pIdx].paragraphAttributes; } catch (e1) {}
+            pa = GLUE.paraPA(F.ch, F.pars, F.pm, pIdx);
             var amt = 120;
             try { if (pa && pa.autoLeadingAmount > 0) amt = pa.autoLeadingAmount; } catch (e2) {}
             var ri = GLUE.rangeInfo(P, Ln.start, Ln.len + Ln.brk, o, amt, F);
@@ -727,13 +727,14 @@ GLUE.explode = function (fr, o) {
                 y -= ri.lead;
                 if (paraStart) {
                     try { y -= (pa ? pa.spaceBefore : 0) || 0; } catch (e3) {}
-                    try { if (prevPi >= 0 && prevPi !== pIdx) y -= F.pars[prevPi].paragraphAttributes.spaceAfter || 0; } catch (e4) {}
+                    try { if (prevPi >= 0 && prevPi !== pIdx) y -= GLUE.paraPA(F.ch, F.pars, F.pm, prevPi).spaceAfter || 0; } catch (e4) {}
                 }
             }
             prevPi = pIdx;
             if (!ri.info) continue;
             var g = GLUE.measureLine(P, Ln.start, Ln.len, pa, paraStart);
             ri.info.base = y; ri.info.left = g[0]; ri.info.right = g[2]; ri.info.fr = fr; ri.info.hb = Ln.hb;
+            if (fb) { ri.info.frL = fb[0]; ri.info.frR = fb[2]; }
             out.push(ri.info);
         }
     } finally { GLUE.drop(P); }
@@ -822,20 +823,30 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
             else cs += c;
         }
     }
-    var pars = null, pa = [], fch = null, nOk = 0;
+    var pars = null, pa = [], fch = null, nOk = 0, pm = GLUE.paraMap(raw);
     try { pars = fr.paragraphs; } catch (e1) {}
     try { fch = fr.textRange.characters; } catch (e1b) {}
     function attrsOf(k) {
         if (pa[k]) return pa[k];
-        var ca = null, r = { size: 12, lead: 14.4, font: "", fill: null, a: null, sb: 0 };
-        ca = GLUE.paraCA(fr, pars, k);
+        var ca = null, r = { size: 12, lead: 14.4, font: "", fill: null, a: null, sb: 0, sa: 0, amt: 120 };
+        ca = GLUE.paraCA(fr, fch, raw, pm, k);
+        try { var pp = GLUE.paraPA(fch, pars, pm, k); r.sb = pp.spaceBefore || 0; r.sa = pp.spaceAfter || 0; if (pp.autoLeadingAmount > 0) r.amt = pp.autoLeadingAmount; } catch (e5) {}
         try { r.size = ca.size; r.font = ca.textFont.name; r.fill = ca.fillColor; } catch (e3) {}
-        try { r.lead = ca.autoLeading ? r.size * 1.2 : ca.leading; } catch (e4) { r.lead = r.size * 1.2; }
-        try { r.sb = pars[k].paragraphAttributes.spaceBefore || 0; } catch (e5) {}
+        try { r.lead = ca.autoLeading ? r.size * r.amt / 100 : ca.leading; } catch (e4) { r.lead = r.size * r.amt / 100; }
         if (withAttrs) { try { r.a = GLUE.readAttr(ca, o); } catch (e6) { r.a = null; } }
         return (pa[k] = r);
     }
-    function justOf(k) { try { return pars[k].paragraphAttributes.justification; } catch (e) { return Justification.LEFT; } }
+    function justOf(k) { try { return GLUE.paraPA(fch, pars, pm, k).justification || Justification.LEFT; } catch (e) { return Justification.LEFT; } }
+    function lineLead(pt, A) {
+        if (!fch) return A.lead;
+        var L = 0, n = pt.t.length, j, ca, v;
+        if (pt.at + n < raw.length && brk(raw.charAt(pt.at + n))) n++;
+        for (j = 0; j < n; j++) {
+            if (!withAttrs && j && j !== n - 1) continue;
+            try { ca = fch[pt.at + j].characterAttributes; v = ca.autoLeading ? ca.size * A.amt / 100 : ca.leading; if (v > L) L = v; } catch (e) {}
+        }
+        return L || A.lead;
+    }
     var b = fr.geometricBounds, y;
     var A0 = attrsOf(parts.length ? parts[0].p : 0);
     if (!isArea) { try { y = fr.anchor[1]; } catch (e7) { y = b[1] - A0.size * 0.8; } }
@@ -845,7 +856,10 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
     k = k > 0 ? (b[2] - b[0]) / k : 0.5;
     for (i = 0; i < parts.length; i++) {
         var A = attrsOf(parts[i].p);
-        if (i > 0) y -= A.lead + (parts[i].hb === "p" ? A.sb : 0);
+        if (i > 0) {
+            y -= lineLead(parts[i], A);
+            if (parts[i].hb === "p") { y -= A.sb; if (parts[i - 1].p !== parts[i].p) y -= attrsOf(parts[i - 1].p).sa; }
+        }
         var t = parts[i].t.replace(/[\r\u0003\n]/g, "").replace(/\s+$/, ""), tk = [], vis = 0;
         for (var q = 0; q < t.length; q++) {
             var c2 = t.charAt(q) === "\t" ? " " : t.charAt(q), ca2 = A.a;
@@ -859,7 +873,7 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
         if (just === Justification.CENTER) l = (b[0] + b[2]) / 2 - w / 2;
         if (just === Justification.RIGHT) l = b[2] - w;
         out.push({ toks: tk, size: A.size, base: y, left: l, right: l + w, text: t, vis: vis, font: A.font, hb: parts[i].hb,
-                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr });
+                   sk: A.font + "|" + GLUE.rnd(A.size) + "|" + GLUE.colorKey(A.fill), fr: fr, frL: isArea ? b[0] : undefined, frR: isArea ? b[2] : undefined });
     }
     if (withAttrs) {
         if (out.length && !nOk) throw new Error(GLUE.t("attrs"));
@@ -871,16 +885,36 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
     return out;
 };
 
-GLUE.paraCA = function (fr, pars, k) {
-    var n = 0, d, j;
-    try { n = pars ? pars.length : 0; } catch (e) {}
-    for (d = 0; d < n; d++) {
-        for (j = k - d; j <= k + d; j += d ? 2 * d : 1) {
-            if (j < 0 || j >= n) continue;
-            try { if (/\S/.test(pars[j].contents)) { var ca = pars[j].characterAttributes; ca.size; return ca; } } catch (e1) {}
+GLUE.paraMap = function (raw) {
+    var st = [0], en = [], i;
+    for (i = 0; i < raw.length; i++) { var c = raw.charAt(i); if (c === "\r" || c === "\n") { en.push(i); st.push(i + 1); } }
+    en.push(raw.length);
+    return { start: st, end: en, len: raw.length };
+};
+GLUE.paraPA = function (fch, pars, pm, k) {
+    var i = pm.start[k];
+    if (fch && i !== undefined) {
+        if (i >= pm.len && i > 0) i = pm.len - 1;
+        try { var p = fch[i].paragraphAttributes; p.spaceBefore; return p; } catch (e) {}
+    }
+    try { if (pars && pars.length === pm.start.length) return pars[k].paragraphAttributes; } catch (e1) {}
+    return null;
+};
+GLUE.paraCA = function (fr, fch, raw, pm, k) {
+    var n = pm.start.length, d, j, q;
+    if (fch) {
+        for (d = 0; d < n; d++) {
+            for (j = k - d; j <= k + d; j += d ? 2 * d : 1) {
+                if (j < 0 || j >= n) continue;
+                for (q = pm.start[j]; q < pm.end[j]; q++) {
+                    if (/\s/.test(raw.charAt(q)) || raw.charAt(q) === "\u0003") continue;
+                    try { var ca = fch[q].characterAttributes; ca.size; return ca; } catch (e1) {}
+                    break;
+                }
+            }
         }
     }
-    try { var ch = fr.textRange.characters; for (j = 0; j < ch.length; j++) if (/\S/.test(ch[j].contents)) return ch[j].characterAttributes; } catch (e2) {}
+    try { return fr.textRange.characterAttributes; } catch (e2) {}
     return null;
 };
 GLUE.defAttr = function () {
@@ -1259,9 +1293,19 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     for (i = 0; i < paras.length; i++) if (paras[i].just && paras[i].just !== (paras[0].just || just)) mixedJ = true;
     if (!mixedJ && paras[0].just) just = paras[0].just;
     if (kind === "area") {
-        var left = minL, width = (maxR - minL) + pad;
+        var left = minL, width = (maxR - minL) + pad, fL = 1e9, fR = -1e9, allF = true;
         if (!mixedJ && just === Justification.CENTER) left -= pad / 2;
         if (!mixedJ && just === Justification.RIGHT) left -= pad;
+        for (i = 0; i < all.length && allF; i++) {
+            var its = all[i].items || [];
+            if (!its.length) allF = false;
+            for (k = 0; k < its.length; k++) {
+                if (its[k].frL === undefined) { allF = false; break; }
+                if (its[k].frL < fL) fL = its[k].frL;
+                if (its[k].frR > fR) fR = its[k].frR;
+            }
+        }
+        if (allF && fR - fL > s0 && minL >= fL - s0 && maxR <= fR + s0) { left = fL; width = fR - fL; }
         var height = (all[0].ref - all[all.length - 1].ref) + asc + gLead * 3 + s0;
         var rect = host.pathItems.rectangle(all[0].ref + asc, left, width, height);
         tf = host.textFrames.areaText(rect);

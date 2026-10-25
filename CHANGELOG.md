@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4
+- Отбивки при перевёрстке готового текста совпадают с исходником: учитывается отбивка после абзаца, интерлиньяж пустых абзацев-распорок берётся у них самих, атрибуты абзаца читаются по символу строки, а не по номеру абзаца (в Illustrator номера могут сбиваться на пустых абзацах — отбивки доставались чужим абзацам).
+  Paragraph spacing of re-laid-out text matches the original: space after is taken into account, empty spacer paragraphs keep their own leading, and paragraph attributes are read from the line's characters rather than by paragraph index (in Illustrator the index can drift on empty paragraphs, giving spacing to the wrong paragraph).
+- Текст в области сохраняет ширину исходной рамки, поэтому строки переносятся так же, как в оригинале.
+  Area text keeps the width of the original frame, so lines wrap exactly as in the original.
+
 ## 1.2.3
 - Исправлено: в 1.2.2 готовый текст склеивался шрифтом и кеглем по умолчанию, а поверх исходника оставалась копия. Оформление теперь читается из исходного текста, временные копии всегда удаляются, а если оформление прочитать нельзя — склейка отменяется с понятной ошибкой вместо тихой потери шрифтов.
   Fixed: in 1.2.2 existing text was glued with the default font and size, and a copy was left over the original. Formatting is now read from the original text, temporary copies are always removed, and if formatting cannot be read, gluing stops with a clear error instead of silently losing fonts.

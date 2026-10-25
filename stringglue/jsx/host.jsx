@@ -771,6 +771,22 @@ GLUE.explodeQuick = function (fr, o, withAttrs) {
     return out;
 };
 
+GLUE.paraCA = function (fr, pars, k) {
+    var n = 0, d, j;
+    try { n = pars ? pars.length : 0; } catch (e) {}
+    for (d = 0; d < n; d++) {
+        for (j = k - d; j <= k + d; j += d ? 2 * d : 1) {
+            if (j < 0 || j >= n) continue;
+            try { if (/\S/.test(pars[j].contents)) { var ca = pars[j].characterAttributes; ca.size; return ca; } } catch (e1) {}
+        }
+    }
+    try { var ch = fr.textRange.characters; for (j = 0; j < ch.length; j++) if (/\S/.test(ch[j].contents)) return ch[j].characterAttributes; } catch (e2) {}
+    return null;
+};
+GLUE.defAttr = function () {
+    return { font: null, size: 12, fill: null, stroke: null, sw: 0, hs: 100, vs: 100, bs: 0, tr: 0, ul: false, st: false, sk: "|12|none", key: "default" };
+};
+
 GLUE.decorate = function (infos, deco, o, precise) {
     var used = [], i;
     if (!deco || !deco.length || !infos.length) return used;
@@ -858,11 +874,13 @@ GLUE.cloneA = function (a) {
 GLUE.frameInfo = function (fr, o) {
     var ch = fr.textRange.characters, cnt = ch.length;
     if (!cnt) return null;
-    var tk = [], maxS = 0, txt = "", vis = 0, skc = {}, sk = "", skN = -1;
+    var tk = [], maxS = 0, txt = "", vis = 0, skc = {}, sk = "", skN = -1, lastA = null;
     for (var q = 0; q < cnt; q++) {
         var cc = ch[q], s = cc.contents;
         if (s === "\r" || s === "\n" || s === "\u0003" || s === "\t") s = " ";
-        var a = GLUE.readAttr(cc.characterAttributes, o);
+        var a;
+        try { a = GLUE.readAttr(cc.characterAttributes, o); } catch (eA) { a = lastA || GLUE.defAttr(); }
+        lastA = a;
         if (a.size > maxS) maxS = a.size;
         if (s !== " ") {
             vis++;
@@ -1266,10 +1284,10 @@ GLUE.overflows = function (tf, nLines) {
 GLUE.readAttr = function (ca, o) {
     var a = {};
     try { a.font = ca.textFont; } catch (e) { a.font = null; }
-    a.size = ca.size;
+    try { a.size = ca.size; } catch (e0) { a.size = 12; }
     try { a.fill = ca.fillColor; } catch (e2) { a.fill = null; }
     try { a.stroke = ca.strokeColor; a.sw = ca.strokeWeight; } catch (e3) { a.stroke = null; a.sw = 0; }
-    a.hs = ca.horizontalScale; a.vs = ca.verticalScale; a.bs = ca.baselineShift; a.tr = ca.tracking;
+    try { a.hs = ca.horizontalScale; a.vs = ca.verticalScale; a.bs = ca.baselineShift; a.tr = ca.tracking; } catch (e5) { a.hs = 100; a.vs = 100; a.bs = 0; a.tr = 0; }
     try { a.ul = !!ca.underline; a.st = !!ca.strikeThrough; } catch (e4) { a.ul = false; a.st = false; }
     a.sk = (a.font ? a.font.name : "") + "|" + GLUE.rnd(a.size) + "|" + GLUE.colorKey(a.fill);
     a.key = (a.font ? a.font.name : "") + "|" + GLUE.rnd(a.size) + "|" + GLUE.colorKey(a.fill) + "|" +

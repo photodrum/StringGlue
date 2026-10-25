@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+- Исправлена ошибка «the value would result in an illegal text range» на готовом тексте с пустыми абзацами (например, между карточками).
+  Fixed “the value would result in an illegal text range” on existing text with empty paragraphs (e.g. between cards).
+
 ## 1.2.1
 - Новый текст всегда ложится наверх — в верхний видимый незаблокированный слой, поверх плашек и фонов.
   New text is always placed on top — in the topmost visible unlocked layer, above plates and backgrounds.

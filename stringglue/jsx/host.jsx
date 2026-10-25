@@ -311,8 +311,7 @@ GLUE.sameFrame = function (pool, a, b) {
     if (pool.grid) return false;
     for (i = 0; i < pool.units.length; i++) { if (pool.units[i].fr === a.fr) ba = pool.units[i].fb; if (pool.units[i].fr === b.fr) bb = pool.units[i].fb; }
     if (!ba || !bb || !!a.area !== !!b.area) return false;
-    if (Math.abs(ba[0] - bb[0]) > 1) return false;
-    return !a.area || Math.abs(ba[2] - bb[2]) <= 1;
+    return a.area || Math.abs(ba[0] - bb[0]) <= 1;
 };
 GLUE.readyChains = function (pool, opt) {
     var i, j, it = pool.items;
@@ -1370,7 +1369,7 @@ GLUE.keepBreak = function (L, opt) {
     return false;
 };
 GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
-    var all = [], i, k;
+    var all = [], i, k, useF = false, fL = 1e9, fR = -1e9;
     for (i = 0; i < paras.length; i++) for (k = 0; k < paras[i].lines.length; k++) all.push(paras[i].lines[k]);
 
     var minL = 1e9, maxR = -1e9;
@@ -1417,7 +1416,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     for (i = 0; i < paras.length; i++) if (paras[i].just && paras[i].just !== (paras[0].just || just)) mixedJ = true;
     if (!mixedJ && paras[0].just) just = paras[0].just;
     if (kind === "area") {
-        var left = minL, width = (maxR - minL) + pad, fL = 1e9, fR = -1e9, allF = true;
+        var left = minL, width = (maxR - minL) + pad, allF = true;
         if (!mixedJ && just === Justification.CENTER) left -= pad / 2;
         if (!mixedJ && just === Justification.RIGHT) left -= pad;
         for (i = 0; i < all.length && allF; i++) {
@@ -1431,7 +1430,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
         }
         var top = all[0].ref + asc, srcF = null;
         if (allF && fR - fL > s0 && minL >= fL - s0 && maxR <= fR + s0) {
-            left = fL; width = fR - fL;
+            left = fL; width = fR - fL; useF = true;
             var f0 = all[0].items;
             for (k = 0; k < f0.length; k++) if (f0[k].frFirst && f0[k].frT !== undefined && f0[k].fr) { srcF = f0[k].fr; top = f0[k].frT; break; }
         }
@@ -1481,7 +1480,9 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
             pa.hyphenation = false;
             pa.firstLineIndent = paras[i].fli || 0;
             pa.leftIndent = paras[i].li || 0;
-            pa.rightIndent = (mixedJ && kind === "area" && pj !== Justification.LEFT) ? pad : 0;
+            var ri = (mixedJ && kind === "area" && pj !== Justification.LEFT) ? pad : 0;
+            if (useF) { var it0 = paras[i].lines[0].items[0]; if (it0 && it0.frR !== undefined) ri += Math.max(0, fR - it0.frR); }
+            pa.rightIndent = ri;
         } catch (e3) {}
     }
     if (opt.mode !== "single" && tr.characters.length === toks.length) GLUE.lineLeading(tr, spans, paras);
@@ -1578,10 +1579,12 @@ GLUE.readAttr = function (ca, o) {
     try { a.stroke = ca.strokeColor; a.sw = ca.strokeWeight; } catch (e3) { a.stroke = null; a.sw = 0; }
     try { a.hs = ca.horizontalScale; a.vs = ca.verticalScale; a.bs = ca.baselineShift; a.tr = ca.tracking; } catch (e5) { a.hs = 100; a.vs = 100; a.bs = 0; a.tr = 0; }
     try { a.ul = !!ca.underline; a.st = !!ca.strikeThrough; } catch (e4) { a.ul = false; a.st = false; }
+    try { a.caps = ca.capitalization; } catch (e6) { a.caps = undefined; }
+    try { a.bp = ca.baselinePosition; } catch (e7) { a.bp = undefined; }
     a.sk = (a.font ? a.font.name : "") + "|" + GLUE.rnd(a.size) + "|" + GLUE.colorKey(a.fill);
     a.key = (a.font ? a.font.name : "") + "|" + GLUE.rnd(a.size) + "|" + GLUE.colorKey(a.fill) + "|" +
         GLUE.colorKey(a.stroke) + "/" + GLUE.rnd(a.sw) + "|" +
-        GLUE.rnd(a.hs) + "|" + GLUE.rnd(a.vs) + "|" + GLUE.rnd(a.bs) + (a.ul ? "|u" : "") + (a.st ? "|s" : "") + (o.track ? "" : "|" + a.tr);
+        GLUE.rnd(a.hs) + "|" + GLUE.rnd(a.vs) + "|" + GLUE.rnd(a.bs) + (a.ul ? "|u" : "") + (a.st ? "|s" : "") + "|" + a.caps + "|" + a.bp + (o.track ? "" : "|" + a.tr);
     return a;
 };
 
@@ -1595,6 +1598,8 @@ GLUE.applyAttr = function (ca, a, extra, o) {
     try { ca.tracking = o.track ? 0 : a.tr; } catch (e6) {}
     try { ca.kerningMethod = AutoKernType.AUTO; } catch (e7) {}
     try { ca.underline = !!a.ul; ca.strikeThrough = !!a.st; } catch (e8) {}
+    try { if (a.caps !== undefined) ca.capitalization = a.caps; } catch (e9) {}
+    try { if (a.bp !== undefined) ca.baselinePosition = a.bp; } catch (e10) {}
 };
 
 GLUE.colorKey = function (c) {

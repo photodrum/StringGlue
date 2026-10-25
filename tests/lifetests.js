@@ -321,6 +321,15 @@ const shifted = () => { const f = areaText([{ lines: ['WYBIELANIE'], attrs: st(1
   const w = [...f.wraps].sort((a, b) => a - b)[0]; f.chars[w].contents = '\u0003'; f.wraps.delete(w); return [f]; };
 S('Shift+Enter не сдвигает отбивки абзацев ниже, живой Illustrator', shifted, { blocks: 1, paras: 3, sb: [0, 4, 30], env: { live: true, skipEmpty: true }, keepStyle: true });
 S('Shift+Enter не сдвигает отбивки абзацев ниже, запасной путь', shifted, { blocks: 1, paras: 3, sb: [0, 4, 30], env: { noDup: true, skipEmpty: true }, keepStyle: true });
+// All Caps, Small Caps и верхний индекс через меню «Символ» (capitalization, baselinePosition) переносятся
+const capsText = () => { const f = areaText([{ lines: ['Kluczowe cechy:'], attrs: st(13, 'Bold', RED), leading: 18 },
+  { lines: ['Zaokrąglone włókna, gęste upakowanie', 'włókien, gumowane włókna polerujące'], attrs: st(12), leading: 16 }],
+  { left: 0, top: 800, width: 260, height: 200 });
+  for (let i = 0; i < 15; i++) f.chars[i].attrs.capitalization = 'ALLCAPS';
+  for (let i = 16; i < 27; i++) f.chars[i].attrs.capitalization = 'SMALLCAPS';
+  f.chars[30].attrs.baselinePosition = 'SUPERSCRIPT'; return [f]; };
+for (const [nm, env] of [['обычный путь', {}], ['живой Illustrator', { live: true, skipEmpty: true }], ['запасной путь', { noDup: true, skipEmpty: true }]])
+  S('All Caps, Small Caps и индекс сохраняются, ' + nm, capsText, { blocks: 1, env, caps: { ALLCAPS: 14, SMALLCAPS: 11, SUPERSCRIPT: 1 } });
 let fail = 0;
 const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {
@@ -348,6 +357,9 @@ for (const sc of T) {
       const bad = want.length !== got.length || want.some((w, i) => got[i].gap === null ? Math.abs(w.y - got[i].y) > 0.35 : Math.abs(w.gap - got[i].gap) > 0.35);
       if (bad) msgs.push(`абзацы (базовая/зазор): ${JSON.stringify(got.map(g => g.gap === null ? g.y : g.gap))}, ждали ${JSON.stringify(want.map((w, i) => got[i] && got[i].gap === null ? w.y : w.gap))}`); }
     if (E.frame) out.forEach(t => { const r = t.textPath; if (!r || Math.abs(r.left - E.frame[0]) > 0.01 || Math.abs(r.width - E.frame[1]) > 0.01) msgs.push(`рамка ${r && r.left}/${r && r.width}, ждали ${E.frame}`); });
+    if (E.caps) { const all = out.flatMap(t => t.chars).filter(c => /^[^\s\u0003\r]$/.test(c.contents)), n = {};
+      all.forEach(c => { if (c.attrs.capitalization) n[c.attrs.capitalization] = (n[c.attrs.capitalization] || 0) + 1; if (c.attrs.baselinePosition) n[c.attrs.baselinePosition] = (n[c.attrs.baselinePosition] || 0) + 1; });
+      for (const k in E.caps) if (n[k] !== E.caps[k]) msgs.push(`${k}: ${n[k] || 0}, ждали ${E.caps[k]}`); }
     if (E.blocks !== undefined && out.length !== E.blocks) msgs.push(`текстов ${out.length}, ждали ${E.blocks}`);
     if (mode === 'auto' && E.blocks !== undefined && r.ana.blocks.length !== E.blocks) msgs.push(`анализ: блоков ${r.ana.blocks.length}, ждали ${E.blocks}`);
     if (E.kinds) { const k = {}; (r.ana.blocks || []).forEach(b => k[b.k] = (k[b.k] || 0) + 1);

@@ -164,8 +164,17 @@ checkGrid('Сетка 2×2: мелкий текст справа от рамки
 // четыре текста, ни одна карточка не склеивается с соседней по колонке
 checkGrid('Сетка 2×2: рамки по тексту, ряды близко, нижние рамки уже', () => grid(2, 2, { fit: true, rowStep: 200, widths: [230, 210, 200, 210] }), 4, { a: 4 });
 checkGrid('Сетка 2×2: рамки одной ширины, ряды близко', () => grid(2, 2, { fit: true, rowStep: 200 }), 4, { a: 4 });
-// скриншот 25.10 (колонка у схемы): три рамки разной ширины столбиком, вплотную — каждая остаётся своим текстом,
-// переносы не меняются (общая рамка шире заставила бы текст переноситься иначе)
-checkGrid('Столбец из трёх рамок разной ширины, вплотную', () => grid(1, 3, { fit: true, rowStep: 170, widths: [230, 215, 230] }), 3, { a: 3 });
+// скриншот 25.10 (колонка у схемы): три рамки разной ширины столбиком, вплотную — склеиваются в один текст,
+// а абзацы из более узкой рамки получают отступ справа на разницу ширины, чтобы переносы не менялись
+checkGrid('Столбец из трёх рамок разной ширины, вплотную — склеиваются', () => grid(1, 3, { fit: true, rowStep: 170, widths: [230, 215, 230] }), 1, { a: 1 });
+for (const [pn, env] of PATHS) {
+  total++;
+  const fr = grid(1, 3, { fit: true, rowStep: 170, widths: [230, 215, 230] }), r = H.run(fr, { mode: 'auto', track: true, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }, env);
+  const t = r.created[0], ps = t.contents.split('\r'), want = [];
+  fr.forEach(f => f.srcParas.forEach(() => want.push(230 - f.textPath.width)));
+  const got = t.paraAttrs.slice(0, ps.length).map(a => Math.round(a.rightIndent || 0));
+  const ok = t.textPath.width === 230 && JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) { fail++; console.log(`✗ Отступы справа по ширине исходных рамок [${pn}]: рамка ${t.textPath.width}, отступы ${JSON.stringify(got)}, ждали ${JSON.stringify(want)}`); }
+}
 checkGrid('Столбец из трёх рамок одной ширины, вплотную — склеиваются', () => grid(1, 3, { fit: true, rowStep: 170 }), 1, { a: 1 });
 console.log(`Сетки: итого ${total - fail}/${total}`);

@@ -120,7 +120,8 @@ function grid(cols, rows, o = {}) {
   const out = []; let s = 2;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const f = cardsFrame(Object.assign({ cards: 1, head: 14, body: 12, lr: 1.4, sb: 6, sa: 0, empties: 0, emptyLead: 0, headWords: 2, bodyWords: 18 + (r * cols + c) * 5,
-      width: 210, x: c * 250, top: 900 - r * 330, seed: s++ }, o));
+      width: (o.widths || [])[r * cols + c] || 210, x: c * 250, top: 900 - r * (o.rowStep || 330), seed: s++ }, o));
+    if (o.fit) f.textPath.height = 900 - r * (o.rowStep || 330) - Math.min(...srcLines(f).map(l => l.y)) + 8;
     out.push(f);
   }
   return out;
@@ -138,7 +139,7 @@ function checkGrid(name, build, blocks, kinds) {
     else {
       if (r.created.length !== blocks) msgs.push(`текстов ${r.created.length}, ждали ${blocks}`);
       const outText = r.created.map(t => norm(t.contents));
-      fr2.filter(f => f.srcParas && f.kind === 'AREATEXT').forEach(f => { if (!outText.includes(norm(f.srcParas.join(' ')))) msgs.push('текст рамки не собран целиком: «' + f.srcParas[0].slice(0, 30) + '»'); });
+      fr2.filter(f => f.srcParas && f.kind === 'AREATEXT').forEach(f => { if (!outText.some(t => t.includes(norm(f.srcParas.join(' '))))) msgs.push('текст рамки не собран целиком: «' + f.srcParas[0].slice(0, 30) + '»'); });
     }
     const u = [...new Set(msgs)].slice(0, 4);
     if (u.length) { fail++; console.log('✗ ' + name + ' [' + pn + ']\n    ' + u.join('\n    ')); }
@@ -159,4 +160,12 @@ checkGrid('Сетка 2×2: мелкий текст справа от рамки
   const g = grid(2, 2); const t = pointText([{ lines: ['•'], attrs: st(8) }], 222, 900 - 330 - 11.2); t.srcParas = ['•'];
   return [...g, t];
 }, 5, { a: 4, p: 1 });
+// скриншот 25.10: сетка 2×2, рамки по размеру текста, ряды близко, у нижних карточек рамки уже —
+// четыре текста, ни одна карточка не склеивается с соседней по колонке
+checkGrid('Сетка 2×2: рамки по тексту, ряды близко, нижние рамки уже', () => grid(2, 2, { fit: true, rowStep: 200, widths: [230, 210, 200, 210] }), 4, { a: 4 });
+checkGrid('Сетка 2×2: рамки одной ширины, ряды близко', () => grid(2, 2, { fit: true, rowStep: 200 }), 4, { a: 4 });
+// скриншот 25.10 (колонка у схемы): три рамки разной ширины столбиком, вплотную — каждая остаётся своим текстом,
+// переносы не меняются (общая рамка шире заставила бы текст переноситься иначе)
+checkGrid('Столбец из трёх рамок разной ширины, вплотную', () => grid(1, 3, { fit: true, rowStep: 170, widths: [230, 215, 230] }), 3, { a: 3 });
+checkGrid('Столбец из трёх рамок одной ширины, вплотную — склеиваются', () => grid(1, 3, { fit: true, rowStep: 170 }), 1, { a: 1 });
 console.log(`Сетки: итого ${total - fail}/${total}`);

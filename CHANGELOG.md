@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+- Исправлено: после склейки текста с Shift+Enter отбивки абзацев съезжали на абзац вверх (большой зазор появлялся внутри карточки). Разрыв строки теперь записывается так, как его понимает Illustrator, а отбивки и интерлиньяж назначаются по положению в тексте, а не по номеру абзаца.
+  Fixed: after gluing text with Shift+Enter, paragraph spacing moved up by one paragraph (a big gap appeared inside a card). The line break is now written the way Illustrator understands it, and spacing and leading are assigned by position in the text rather than by paragraph number.
+- Рамки столбиком склеиваются в один текст, только если у них одинаковые левый край и ширина и рядом нет другой колонки готового текста. Карточки в сетке и рамки разной ширины остаются отдельными текстами — переносы не меняются.
+  Stacked frames are glued into one text only when they share the left edge and width and there is no other column of existing text next to them. Cards in a grid and frames of different widths stay separate texts — wraps do not change.
+
 ## 1.3.0
 - В режиме «Авто» все переводы строк готового текста сохраняются — и Enter, и Shift+Enter, в точечном тексте и в тексте в области, чтобы вёрстка не плыла. Склеиваются только переносы по ширине рамки. Ручные режимы работают как раньше.
   In Auto mode every line break of existing text is kept — both Enter and Shift+Enter, in point and area text — so the layout does not drift. Only wraps at the frame width are joined. Manual modes work as before.

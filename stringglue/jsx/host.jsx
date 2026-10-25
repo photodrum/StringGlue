@@ -267,7 +267,7 @@ GLUE.pools = function (infos) {
         if (!it.ready || !it.fr) { loose.push(it); continue; }
         u = null;
         for (j = 0; j < units.length; j++) if (units[j].fr === it.fr) { u = units[j]; break; }
-        if (!u) { u = { fr: it.fr, items: [] }; units.push(u); try { GLUE.grow(u, it.fr.geometricBounds); } catch (e) {} }
+        if (!u) { u = { fr: it.fr, items: [] }; units.push(u); try { u.fb = it.fr.geometricBounds; GLUE.grow(u, u.fb); } catch (e) {} }
         u.items.push(it); GLUE.grow(u, GLUE.box(it));
     }
     var pools = [];
@@ -285,6 +285,12 @@ GLUE.pools = function (infos) {
         pools[j].units.push(u);
         pools[j].items = pools[j].items.concat(u.items);
     }
+    var grid = false;
+    for (i = 0; i < units.length && !grid; i++) for (j = i + 1; j < units.length && !grid; j++) {
+        var A = units[i].box, Bx = units[j].box;
+        if (Math.min(A[1], Bx[1]) - Math.max(A[3], Bx[3]) > 0.5 && Math.min(A[2], Bx[2]) - Math.max(A[0], Bx[0]) <= 0.5) grid = true;
+    }
+    for (i = 0; i < pools.length; i++) pools[i].grid = grid;
     for (i = 0; i < loose.length; i++) {
         var bx = GLUE.box(loose[i]);
         for (j = 0; j < pools.length; j++) {
@@ -295,10 +301,18 @@ GLUE.pools = function (infos) {
             }
             if (fit) break;
         }
-        if (j === pools.length) pools.push({ units: [], items: [] });
+        if (j === pools.length) pools.push({ units: [], items: [], grid: grid });
         pools[j].items.push(loose[i]);
     }
     return pools;
+};
+GLUE.sameFrame = function (pool, a, b) {
+    var ba = null, bb = null, i;
+    if (pool.grid) return false;
+    for (i = 0; i < pool.units.length; i++) { if (pool.units[i].fr === a.fr) ba = pool.units[i].fb; if (pool.units[i].fr === b.fr) bb = pool.units[i].fb; }
+    if (!ba || !bb || !!a.area !== !!b.area) return false;
+    if (Math.abs(ba[0] - bb[0]) > 1) return false;
+    return !a.area || Math.abs(ba[2] - bb[2]) <= 1;
 };
 GLUE.readyChains = function (pool, opt) {
     var i, j, it = pool.items;
@@ -311,7 +325,7 @@ GLUE.readyChains = function (pool, opt) {
         var L = lines[i], fr = L.items[0].fr;
         if (cur) {
             var P = cur.lines[cur.lines.length - 1], gap = P.ref - L.ref, sz = Math.max(P.fsize || P.size, L.fsize || L.size);
-            if (P.items[0].fr !== fr && gap > 12 * sz) cur = null;
+            if (P.items[0].fr !== fr && (gap > 12 * sz || !GLUE.sameFrame(pool, P.items[0], L.items[0]))) cur = null;
         }
         if (!cur) { cur = { lines: [] }; blocks.push(cur); }
         cur.lines.push(L);
@@ -1366,9 +1380,10 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     }
     var just = GLUE.detectJust(all);
 
-    var toks = [], spans = [];
+    var toks = [], spans = [], pStart = [];
     for (i = 0; i < paras.length; i++) {
         if (i > 0) toks.push({ ch: "\r", a: null });
+        pStart.push(toks.length);
         var pl = paras[i].lines;
         for (k = 0; k < pl.length; k++) {
             var lt = pl[k].toks;
@@ -1376,7 +1391,7 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
                 var last = toks[toks.length - 1];
                 var prev2 = toks.length > 1 ? toks[toks.length - 2].ch : "";
                 var hy = GLUE.isHyphen(last.ch) && GLUE.isLetter(prev2);
-                if (!join || GLUE.keepBreak(pl[k], opt)) toks.push({ ch: "\u0003", a: null });
+                if (!join || GLUE.keepBreak(pl[k], opt)) toks.push({ ch: "\n", a: null });
                 else if (hy) { if (opt.hyph && GLUE.isLower(lt[0].ch)) toks.pop(); }
                 else toks.push({ ch: " ", a: last.a });
             }
@@ -1446,20 +1461,27 @@ GLUE.makeText = function (host, paras, kind, opt, gLead, src, join) {
     if (tr.characters.length === toks.length) GLUE.applyRuns(tr, toks, dom, opt);
     else GLUE.applyByMatch(tr, toks, dom, opt);
 
-    var tps = tf.paragraphs;
-    for (i = 0; i < tps.length && i < paras.length; i++) {
+    var byOff = tr.characters.length === toks.length, tps = tf.paragraphs;
+    for (i = 0; i < paras.length; i++) {
         try {
-            var pr = tps[i];
-            pr.characterAttributes.autoLeading = false;
-            pr.characterAttributes.leading = paras[i].lead;
-            var pj = paras[i].just || just;
-            pr.paragraphAttributes.justification = pj;
-            pr.paragraphAttributes.spaceBefore = paras[i].spaceBefore || 0;
-            pr.paragraphAttributes.spaceAfter = 0;
-            pr.paragraphAttributes.hyphenation = false;
-            pr.paragraphAttributes.firstLineIndent = paras[i].fli || 0;
-            pr.paragraphAttributes.leftIndent = paras[i].li || 0;
-            pr.paragraphAttributes.rightIndent = (mixedJ && kind === "area" && pj !== Justification.LEFT) ? pad : 0;
+            var pj = paras[i].just || just, pa = null, lead = paras[i].lead;
+            if (byOff) {
+                var st = pStart[i], en = i + 1 < paras.length ? pStart[i + 1] - 1 : toks.length;
+                GLUE.rangeDo(tr, st, en - st, function (ca) { ca.autoLeading = false; ca.leading = lead; });
+                pa = tr.characters[st].paragraphAttributes;
+            } else {
+                if (i >= tps.length) break;
+                tps[i].characterAttributes.autoLeading = false;
+                tps[i].characterAttributes.leading = lead;
+                pa = tps[i].paragraphAttributes;
+            }
+            pa.justification = pj;
+            pa.spaceBefore = paras[i].spaceBefore || 0;
+            pa.spaceAfter = 0;
+            pa.hyphenation = false;
+            pa.firstLineIndent = paras[i].fli || 0;
+            pa.leftIndent = paras[i].li || 0;
+            pa.rightIndent = (mixedJ && kind === "area" && pj !== Justification.LEFT) ? pad : 0;
         } catch (e3) {}
     }
     if (opt.mode !== "single" && tr.characters.length === toks.length) GLUE.lineLeading(tr, spans, paras);
@@ -1609,7 +1631,7 @@ GLUE.spread = function (arr) {
     return mx - mn;
 };
 GLUE.rnd = function (v) { return Math.round(v * 100) / 100; };
-GLUE.isSep = function (c) { return c === "\r" || c === "\u0003" || c === " " || c === "\t"; };
+GLUE.isSep = function (c) { return c === "\r" || c === "\u0003" || c === "\n" || c === " " || c === "\t"; };
 GLUE.isHyphen = function (c) { return c === "-" || c === "­" || c === "‐"; };
 GLUE.isLetter = function (c) { return !!c && c.toLowerCase() !== c.toUpperCase(); };
 GLUE.isLower = function (c) { return GLUE.isLetter(c) && c === c.toLowerCase(); };

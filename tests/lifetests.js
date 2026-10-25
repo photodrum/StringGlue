@@ -312,6 +312,15 @@ S('Shift+Enter в тексте в области сохраняется, обы�
 S('Shift+Enter в тексте в области сохраняется, живой Illustrator', forced, { blocks: 1, text: forcedText, env: { live: true, skipEmpty: true }, keepStyle: true });
 S('Shift+Enter в тексте в области сохраняется, запасной путь', forced, { blocks: 1, text: forcedText, env: { noDup: true, skipEmpty: true }, keepStyle: true });
 S('Shift+Enter в тексте в области, режим «Абзац в области»', forced, { mode: 'area', text: forcedText });
+// скриншоты 25.10 (сетка карточек, колонка у схемы): Shift+Enter в начале абзаца, ниже абзац с большой отбивкой.
+// Если разрыв строки записать в Illustrator как \u0003, он становится концом абзаца и все отбивки ниже съезжают на абзац вверх.
+const shifted = () => { const f = areaText([{ lines: ['WYBIELANIE'], attrs: st(13, 'Bold'), leading: 18 },
+  { lines: ['Wszystkie pasty do zębów', 'z gamy Professional zawierają', 'powierzchniowych przebarwień.'], attrs: st(12), leading: 16, spaceBefore: 4 },
+  { lines: ['White Plus oferuje najsilniejsze', 'pacjentów z nadwrażliwością.'], attrs: st(12), leading: 16, spaceBefore: 30 }],
+  { left: 0, top: 800, width: 230, height: 300 });
+  const w = [...f.wraps].sort((a, b) => a - b)[0]; f.chars[w].contents = '\u0003'; f.wraps.delete(w); return [f]; };
+S('Shift+Enter не сдвигает отбивки абзацев ниже, живой Illustrator', shifted, { blocks: 1, paras: 3, sb: [0, 4, 30], env: { live: true, skipEmpty: true }, keepStyle: true });
+S('Shift+Enter не сдвигает отбивки абзацев ниже, запасной путь', shifted, { blocks: 1, paras: 3, sb: [0, 4, 30], env: { noDup: true, skipEmpty: true }, keepStyle: true });
 let fail = 0;
 const styleOf = c => c.attrs.textFont.name + '/' + c.attrs.size + '/' + JSON.stringify(c.attrs.fillColor);
 for (const sc of T) {

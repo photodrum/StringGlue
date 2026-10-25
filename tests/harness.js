@@ -80,6 +80,7 @@ function makeChars(frame) {
 let LIVE = false;
 // env.skipEmpty: коллекция paragraphs не содержит пустых абзацев — номера абзацев не совпадают с числом возвратов каретки
 let SKIPEMPTY = false;
+let ETXPARA = false;
 function newFrame(kind, extra) {
   const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, name: '', story: { textFrames: { length: 1 } },
     remove() { if (this.dead) throw new Error('No such element'); this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
@@ -96,7 +97,9 @@ function newFrame(kind, extra) {
   if (extra && extra.dyn) Object.defineProperty(f, 'geometricBounds', { get: () => dynBounds(f) });
   Object.defineProperty(f, 'contents', {
     get: () => f.chars.map(c => c.contents).join(''),
-    set: v => { f.chars = [...v].map(ch => ({ contents: ch, attrs: baseAttrs() })); },
+    // как в Illustrator: записанный "\n" — принудительный разрыв строки, читается обратно как \u0003;
+    // env.etxPara: записанный \u0003 становится концом абзаца (проверка, что плагин так не пишет)
+    set: v => { f.chars = [...v].map(ch => ({ contents: ch === '\n' ? '\u0003' : (ch === '\u0003' && ETXPARA ? '\r' : ch), attrs: baseAttrs() })); },
   });
   makeChars(f);
   return f;
@@ -216,6 +219,7 @@ function run(frames, opt, env) {
   NODUP = !!(env && env.noDup);
   LIVE = !!(env && env.live);
   SKIPEMPTY = !!(env && env.skipEmpty);
+  ETXPARA = !!(env && env.live);
   const ctx = Object.assign({ app, console, RGBColor: function () {}, StrokeCap: { BUTTENDCAP: 'BUTT' } }, ENUMS);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(HOST, 'utf8').replace(/^\s+/, ''), ctx);
@@ -226,7 +230,7 @@ function run(frames, opt, env) {
   LEFTOVERS.length = 0;
   const res = vm.runInContext('glueText(__opt)', ctx);
   const junk = LEFTOVERS.filter(x => !x.removed).length + anaJunk;
-  LIVE = false; SKIPEMPTY = false;
+  LIVE = false; SKIPEMPTY = false; ETXPARA = false;
   return { res, created, frames, ana, doc, junk };
 }
 

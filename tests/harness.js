@@ -1,6 +1,7 @@
 // Мини-имитация объектной модели Illustrator для прогона host.jsx в Node.
 const fs = require('fs'), vm = require('vm');
 const LEFTOVERS = [];
+let NODUP = false;   // env.noDup: копии текста не создаются — проверка запасного разбора
 const HOST = process.argv[2] || require('path').join(__dirname, '..', 'stringglue', 'jsx', 'host.jsx');
 
 const ENUMS = {
@@ -41,8 +42,9 @@ function makeChars(frame) {
   }
   function attrProxy(get) {
     return new Proxy({}, {
-      get: (_, k) => { const cs = get(); return cs.length ? cs[0].attrs[k] : undefined; },
-      set: (_, k, v) => { get().forEach(c => { c.attrs[k] = v; }); return true; },
+      // как в Illustrator: у пустого диапазона (пустой абзац) атрибуты не читаются и не пишутся
+      get: (_, k) => { const cs = get(); if (!cs.length) throw new Error('the value would result in an illegal text range'); return cs[0].attrs[k]; },
+      set: (_, k, v) => { const cs = get(); if (!cs.length) throw new Error('the value would result in an illegal text range'); cs.forEach(c => { c.attrs[k] = v; }); return true; },
     });
   }
   const charsView = new Proxy([], {
@@ -60,9 +62,9 @@ function makeChars(frame) {
     const out = []; let s = 0;
     for (let i = 0; i <= frame.chars.length; i++) {
       if (i === frame.chars.length || frame.chars[i].contents === '\r') {
-        const a = s, b = i + (i < frame.chars.length ? 1 : 0);
+        const a = s, b = i;   // как в Illustrator: диапазон абзаца без завершающего \r, у пустого абзаца он пустой
         const pa = frame.paraAttrs[out.length] || (frame.paraAttrs[out.length] = {});
-        out.push({ characterAttributes: attrProxy(() => frame.chars.slice(a, b)), paragraphAttributes: pa });
+        out.push({ characterAttributes: attrProxy(() => frame.chars.slice(a, b)), paragraphAttributes: pa, contents: frame.chars.slice(a, b).map(c => c.contents).join('') });
         s = i + 1;
       }
     }
@@ -73,7 +75,7 @@ function makeChars(frame) {
 function newFrame(kind, extra) {
   const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, story: { textFrames: { length: 1 } },
     remove() { this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
-    duplicate() { const d = newFrame(this.kind, { dyn: this.dyn, anchor: this.anchor && this.anchor.slice(), textPath: this.textPath && Object.assign({}, this.textPath),
+    duplicate() { if (NODUP) throw new Error('the value would result in an illegal text range'); const d = newFrame(this.kind, { dyn: this.dyn, anchor: this.anchor && this.anchor.slice(), textPath: this.textPath && Object.assign({}, this.textPath),
         wraps: this.wraps && new Set(this.wraps), layer: this.layer, parent: this.parent });
       d.paraAttrs = this.paraAttrs.map(a => Object.assign({}, a));
       d.chars = this.chars.map(c => ({ contents: c.contents, attrs: Object.assign({}, c.attrs) }));
@@ -189,6 +191,7 @@ function layout(tf) {
 
 function run(frames, opt, env) {
   const { app, created, doc } = makeApp(frames, env);
+  NODUP = !!(env && env.noDup);
   const ctx = Object.assign({ app, console, RGBColor: function () {}, StrokeCap: { BUTTENDCAP: 'BUTT' } }, ENUMS);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(HOST, 'utf8').replace(/^\s+/, ''), ctx);

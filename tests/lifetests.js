@@ -194,6 +194,19 @@ S('Текст ложится поверх плашек: верхний слой,
 S('Текст поверх всего и в обычных режимах', () => L('Обычная строка текста', st(14), 800, 0),
   { mode: 'area', env: { above: [{ name: 'Плашки' }] }, top: 'Плашки' });
 
+// готовый текст на карточках: заголовки, абзацы и пустые абзацы между карточками (скриншот 25.10)
+const cards = () => [areaText([
+  { lines: ['HYDROKSYAPATYT'], attrs: st(16, 'Bold'), leading: 22 },
+  { lines: ['Mineralne wsparcie przypominające', 'naturalne szkliwo, przeznaczone do', 'rutyn pielęgnacyjnych'], attrs: st(16), leading: 22 },
+  { lines: [''], attrs: st(16), leading: 22 }, { lines: [''], attrs: st(16), leading: 22 },
+  { lines: ['PAPAINA'], attrs: st(16, 'Bold'), leading: 22 },
+  { lines: ['Oczyszczanie oparte na działaniu', 'enzymów oraz kontrola'], attrs: st(16), leading: 22 }],
+  { left: 0, top: 811, width: 300, height: 400 })];
+S('Готовый текст с пустыми абзацами между карточками', cards, { blocks: 2, paras: 2 });
+S('То же, если точный разбор недоступен (запасной путь)', cards, { blocks: 2, env: { noDup: true } });
+S('Пустой первый абзац, запасной путь', () => [areaText([{ lines: [''], attrs: st(12), leading: 16 }, { lines: body, attrs: st(12), leading: 16 }],
+  { left: 0, top: 809.6, width: 360, height: 120 })], { blocks: 1, env: { noDup: true } });
+
 let fail = 0;
 for (const sc of T) {
   const frames = sc.build(), msgs = [], mode = sc.exp.mode || 'auto';

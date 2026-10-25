@@ -43,7 +43,7 @@ function makeChars(frame) {
   function attrProxy(get) {
     return new Proxy({}, {
       // как в Illustrator: у пустого диапазона (пустой абзац) атрибуты не читаются и не пишутся
-      get: (_, k) => { const cs = get(); if (!cs.length) throw new Error('the value would result in an illegal text range'); return cs[0].attrs[k]; },
+      get: (_, k) => { if (frame.badAttrs) throw new Error('No such element'); const cs = get(); if (!cs.length) throw new Error('the value would result in an illegal text range'); return cs[0].attrs[k]; },
       set: (_, k, v) => { const cs = get(); if (!cs.length) throw new Error('the value would result in an illegal text range'); cs.forEach(c => { c.attrs[k] = v; }); return true; },
     });
   }
@@ -72,16 +72,19 @@ function makeChars(frame) {
   } });
 }
 
+// env.live: ведём себя как живой Illustrator 25.10 — у сконвертированной копии оформление не читается,
+// а convertAreaObjectToPointObject оставляет исходную копию и возвращает новый объект
+let LIVE = false;
 function newFrame(kind, extra) {
-  const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, story: { textFrames: { length: 1 } },
-    remove() { this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
+  const f = Object.assign({ typename: 'TextFrame', kind, chars: [], paraAttrs: [], removed: false, hidden: false, name: '', story: { textFrames: { length: 1 } },
+    remove() { if (this.dead) throw new Error('No such element'); this.removed = true; }, move(to, how) { this.placedIn = to; this.placedAt = how; },
     duplicate() { if (NODUP) throw new Error('the value would result in an illegal text range'); const d = newFrame(this.kind, { dyn: this.dyn, anchor: this.anchor && this.anchor.slice(), textPath: this.textPath && Object.assign({}, this.textPath),
-        wraps: this.wraps && new Set(this.wraps), layer: this.layer, parent: this.parent });
+        wraps: this.wraps && new Set(this.wraps), layer: this.layer, parent: this.parent, name: this.name, badAttrs: this.badAttrs });
       d.paraAttrs = this.paraAttrs.map(a => Object.assign({}, a));
       d.chars = this.chars.map(c => ({ contents: c.contents, attrs: Object.assign({}, c.attrs) }));
       if (this.kind === 'AREATEXT') d.convertAreaObjectToPointObject = () => convertArea(d);
       d.createOutline = () => { const g = { typename: 'GroupItem', geometricBounds: [0, 0, 1, 1], remove() { g.removed = true; } }; LEFTOVERS.push(g); d.removed = true; return g; };
-      LEFTOVERS.push(d); return d; } }, extra);
+      LEFTOVERS.push(d); if (this.layer && this.layer.all) this.layer.all.push(d); return d; } }, extra);
   Object.defineProperty(f, 'lines', { get: () => {
     if (f.wraps) return visualLines(f).map(t => ({ contents: t, characters: { length: t.length } }));
     const n = f.contents.split(/[\r\u0003]/).length; return Array.from({ length: n }, () => ({ characters: { length: 1e6 } })); } });
@@ -126,17 +129,26 @@ function visualLines(f) {
 }
 // текст в области → точечный: переносы становятся абзацами, точка привязки — первая базовая линия
 function convertArea(d) {
-  const r = d.textPath, j = (d.paraAttrs[0] || {}).justification || 'LEFT', newPA = []; let p = 0;
-  newPA.push(Object.assign({}, d.paraAttrs[0] || {}));
-  d.chars.forEach((c, i) => {
-    if (c.contents === '\r') { p++; newPA.push(Object.assign({}, d.paraAttrs[p] || {})); }
-    else if (d.wraps.has(i)) { c.contents = '\r'; newPA.push(Object.assign({}, d.paraAttrs[p] || {}, { spaceBefore: 0, firstLineIndent: 0 })); }
+  let t = d;
+  if (LIVE) {   // как в живом Illustrator: возвращается новый объект, у которого оформление не читается, старая копия остаётся
+    t = Object.assign(newFrame('AREATEXT', { dyn: true, textPath: Object.assign({}, d.textPath), wraps: new Set(d.wraps), layer: d.layer, parent: d.parent, name: '' }), {});
+    t.paraAttrs = d.paraAttrs.map(a => Object.assign({}, a));
+    t.chars = d.chars.map(c => ({ contents: c.contents, attrs: Object.assign({}, c.attrs) }));
+    t.badAttrs = true;
+    t.duplicate = d.duplicate.bind(t);
+    LEFTOVERS.push(t); if (d.layer && d.layer.all) d.layer.all.push(t);
+  }
+  const r = t.textPath, j = (t.paraAttrs[0] || {}).justification || 'LEFT', newPA = []; let p = 0;
+  newPA.push(Object.assign({}, t.paraAttrs[0] || {}));
+  t.chars.forEach((c, i) => {
+    if (c.contents === '\r') { p++; newPA.push(Object.assign({}, t.paraAttrs[p] || {})); }
+    else if (t.wraps.has(i)) { c.contents = '\r'; newPA.push(Object.assign({}, t.paraAttrs[p] || {}, LIVE ? {} : { spaceBefore: 0, firstLineIndent: 0 })); }
   });
-  d.paraAttrs = newPA; d.wraps = null; d.kind = 'POINTTEXT';
-  const first = d.chars.find(c => c.contents.trim()) || { attrs: { size: 12 } };
+  t.paraAttrs = newPA; t.wraps = null; t.kind = 'POINTTEXT';
+  const first = t.chars.find(c => c.contents.trim()) || { attrs: { size: 12 } };
   const x = j === 'CENTER' ? r.left + r.width / 2 : (j === 'RIGHT' ? r.left + r.width : r.left);
-  d.anchor = [x, r.top - first.attrs.size * 0.8];
-  return d;
+  t.anchor = [x, r.top - first.attrs.size * 0.8];
+  return t;
 }
 
 // исходный «рассыпанный» фрагмент: строка из одного или нескольких символов одного стиля
@@ -159,14 +171,19 @@ function makeApp(frames, env = {}) {
     };
     return L; };
   const layer = mkLayer('Layer 1');
+  layer.all = [];
   frames.forEach(f => { f.layer = layer; f.parent = layer; });
+  (function walk(a) { a.forEach(x => { if (x.typename === 'GroupItem') walk(x.pageItems); else if (x.typename === 'TextFrame') layer.all.push(x); }); })(frames);
   // env.above: слои над слоем с текстом, сверху вниз, например [{ name: 'Плашки' }, { name: 'Замок', locked: true }]
   const layers = [...(env.above || []).map(o => mkLayer(o.name, o)), layer];
   layers.add = () => { const L = { name: '', locked: false, visible: true, printable: true, rects: [], groups: [],
     pathItems: { rectangle: (t, l, w, h) => { const r = { top: t, left: l, width: w, height: h }; L.rects.push(r); return r; } },
     groupItems: { add: () => { const g = { paths: [], pathItems: { add: () => { const q = { setEntirePath(pts) { this.pts = pts; } }; g.paths.push(q); return q; } } }; L.groups.push(g); return g; } },
     remove() { layers.splice(layers.indexOf(L), 1); } }; layers.unshift(L); return L; };
-  const doc = { name: 'test.ai', selection: frames, activeLayer: layer, layers };
+  // doc.textFrames: все тексты документа, кроме удалённых (для поиска по имени)
+  const textFrames = new Proxy([], { get: (_, k) => { const live = layer.all.concat(created).filter(f => !f.removed);
+    if (k === 'length') return live.length; if (typeof k === 'string' && /^\d+$/.test(k)) return live[+k]; return undefined; } });
+  const doc = { name: 'test.ai', selection: frames, activeLayer: layer, layers, textFrames };
   return { app: { documents: { length: 1 }, activeDocument: doc }, created, doc };
 }
 
@@ -192,14 +209,18 @@ function layout(tf) {
 function run(frames, opt, env) {
   const { app, created, doc } = makeApp(frames, env);
   NODUP = !!(env && env.noDup);
+  LIVE = !!(env && env.live);
   const ctx = Object.assign({ app, console, RGBColor: function () {}, StrokeCap: { BUTTENDCAP: 'BUTT' } }, ENUMS);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(HOST, 'utf8').replace(/^\s+/, ''), ctx);
   ctx.__opt = opt;
+  LEFTOVERS.length = 0;
   const ana = JSON.parse(vm.runInContext('glueAnalyze(__opt)', ctx));
+  const anaJunk = LEFTOVERS.filter(x => !x.removed).length;
   LEFTOVERS.length = 0;
   const res = vm.runInContext('glueText(__opt)', ctx);
-  const junk = LEFTOVERS.filter(x => !x.removed).length;
+  const junk = LEFTOVERS.filter(x => !x.removed).length + anaJunk;
+  LIVE = false;
   return { res, created, frames, ana, doc, junk };
 }
 

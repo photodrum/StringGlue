@@ -1,1 +1,12 @@
-QGVjaG8gb2ZmDQpjaGNwIDY1MDAxID5udWwNCnNldGxvY2FsDQpzZXQgIkRFU1Q9JUFQUERBVEElXEFkb2JlXENFUFxleHRlbnNpb25zXHN0cmluZ2dsdWUiDQplY2hvIEluc3RhbGxpbmcgU3RyaW5nIEdsdWUgdG86ICVERVNUJQ0KZm9yICUldiBpbiAoOSAxMCAxMSAxMiAxMyAxNCkgZG8gcmVnIGFkZCAiSEtDVVxTb2Z0d2FyZVxBZG9iZVxDU1hTLiUldiIgL3YgUGxheWVyRGVidWdNb2RlIC90IFJFR19TWiAvZCAxIC9mID5udWwNCmlmIGV4aXN0ICIlREVTVCUiIHJtZGlyIC9zIC9xICIlREVTVCUiDQp4Y29weSAiJX5kcDBzdHJpbmdnbHVlIiAiJURFU1QlXCIgL2UgL2kgL3kgL3EgPm51bA0KaWYgZXJyb3JsZXZlbCAxIChlY2hvIEVSUk9SOiBjb3B5IGZhaWxlZCAmIHBhdXNlICYgZXhpdCAvYiAxKQ0KZWNoby4NCmVjaG8gRG9uZS4gUmVzdGFydCBJbGx1c3RyYXRvciBhbmQgb3BlbjogV2luZG93IC0gRXh0ZW5zaW9ucyAtIFN0cmluZyBHbHVlDQpwYXVzZQ0K
+@echo off
+chcp 65001 >nul
+setlocal
+set "DEST=%APPDATA%\Adobe\CEP\extensions\stringglue"
+echo Installing String Glue to: %DEST%
+for %%v in (9 10 11 12 13 14) do reg add "HKCU\Software\Adobe\CSXS.%%v" /v PlayerDebugMode /t REG_SZ /d 1 /f >nul
+if exist "%DEST%" rmdir /s /q "%DEST%"
+xcopy "%~dp0stringglue" "%DEST%\" /e /i /y /q >nul
+if errorlevel 1 (echo ERROR: copy failed & pause & exit /b 1)
+echo.
+echo Done. Restart Illustrator and open: Window - Extensions - String Glue
+pause

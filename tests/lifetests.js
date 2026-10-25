@@ -104,7 +104,7 @@ S('Фон, линейка и значок не трогаются', () => {
 S('Текст по контуру, связанный и повёрнутый пропускаются', () => {
   const out = [...L('Обычный текст из букв', st(14), 800, 0)];
   const p = pointText([{ lines: ['по контуру'], attrs: st(12) }], 0, 700); p.kind = 'PATHTEXT'; out.push(p);
-  const th = areaText([{ lines: ['связанный текст'], attrs: st(12), leading: 16 }], { left: 0, top: 660, width: 200, height: 20 }); th.nextFrame = {}; out.push(th);
+  const th = areaText([{ lines: ['связанный текст'], attrs: st(12), leading: 16 }], { left: 0, top: 660, width: 200, height: 20 }); th.story = { textFrames: { length: 2 } }; out.push(th);
   const rot = pointText([{ lines: ['повёрнутый'], attrs: st(12) }], 0, 600); rot.matrix = { mValueA: 0.7, mValueB: 0.7, mValueC: -0.7, mValueD: 0.7 }; out.push(rot);
   return out;
 }, { blocks: 1, skipped: 3, keptFrames: 3 });
@@ -185,14 +185,23 @@ S('Выделен только неподходящий текст — поня�
   return [p];
 }, { err: 'Тексты по контуру, связанные, повёрнутые и вертикальные не обрабатываются' });
 
+S('Текст ложится поверх плашек: верхний слой, первым объектом', () => {
+  const out = [pathItem(-10, 820, 400, 780, { fill: rgb(240, 240, 240) })];
+  out.push(...L('Строка таблицы над плашкой', st(14), 800, 0));
+  return out;
+}, { blocks: 1, env: { above: [{ name: 'Замок', locked: true }, { name: 'Скрытый', visible: false }, { name: 'Плашки' }] }, top: 'Плашки' });
+
+S('Текст поверх всего и в обычных режимах', () => L('Обычная строка текста', st(14), 800, 0),
+  { mode: 'area', env: { above: [{ name: 'Плашки' }] }, top: 'Плашки' });
+
 let fail = 0;
 for (const sc of T) {
   const frames = sc.build(), msgs = [], mode = sc.exp.mode || 'auto';
   const flat = []; (function walk(a) { a.forEach(x => x.typename === 'GroupItem' ? walk(x.pageItems) : flat.push(x)); })(frames);
   const texts = flat.filter(f => f.typename === 'TextFrame'), paths = flat.filter(f => f.typename !== 'TextFrame');
-  const usable = texts.filter(f => f.kind !== 'PATHTEXT' && !f.nextFrame && !f.matrix && !f.hidden);
+  const usable = texts.filter(f => f.kind !== 'PATHTEXT' && !(f.story && f.story.textFrames.length > 1) && !f.matrix && !f.hidden);
   const srcChars = usable.map(f => f.contents).join('').replace(/[\s\u0003\r]/g, '').split('').sort().join('');
-  const r = H.run(frames, { mode, track: true, hyph: false, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' });
+  const r = H.run(frames, { mode, track: true, hyph: false, del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' }, sc.exp.env);
   if (sc.exp.err) { if (r.res !== 'ERR:' + sc.exp.err) msgs.push('ждали ошибку «' + sc.exp.err + '», получили ' + r.res);
     if (r.ana.err !== sc.exp.err) msgs.push('анализ: ' + JSON.stringify(r.ana)); }
   else if (!r.res.startsWith('OK:')) { msgs.push(r.res); }
@@ -233,6 +242,7 @@ for (const sc of T) {
     if (E.keptFrames !== undefined && texts.filter(f => !f.removed).length !== E.keptFrames) msgs.push(`осталось текстов ${texts.filter(f => !f.removed).length}, ждали ${E.keptFrames}`);
     if (E.sup) { const sh = out.flatMap(t => t.chars).filter(c => c.attrs.baselineShift === 5 && c.attrs.size === 8).length; if (sh !== E.sup) msgs.push(`индексов ${sh}, ждали ${E.sup}`); }
     if (E.fli !== undefined) { const f = (t0.paraAttrs || []).slice(0, t0.contents.split('\r').length).map(a => Math.round(a.firstLineIndent || 0)); if (f.some(v => Math.abs(v - E.fli) > 1)) msgs.push(`красная строка: ${JSON.stringify(f)}`); }
+    if (E.top) out.forEach(t => { if (!t.layer || t.layer.name !== E.top || t.placedAt !== 'PLACEATBEGINNING') msgs.push(`текст не наверху: слой ${t.layer && t.layer.name}, ${t.placedAt}`); });
     if (E.groupClipKept) { const g = frames[0], clip = g.pageItems[0]; if (clip.removed) msgs.push('обтравочный контур удалён'); }
     if (E.hiddenKept && texts.filter(f => f.hidden && f.removed).length) msgs.push('скрытый объект удалён');
     if (E.skipped !== undefined && !r.res.includes('пропущено: ' + E.skipped)) msgs.push(`в статусе нет «пропущено: ${E.skipped}»: ${r.res}`);

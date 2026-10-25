@@ -188,6 +188,19 @@ S('Абзацы с красной строкой 1,5 em', () => {
   return out;
 }, { blocks: 1, kinds: { a: 1 }, fli: 18 });
 
+// столбец таблицы, выделенный отдельно: значки и числа с большим шагом строк — каждый своим текстом, а не абзацем
+S('Столбец значков таблицы (выделен один столбец)', () => {
+  const G = rgb(43, 140, 80), R = rgb(210, 50, 60), O = rgb(190, 130, 20), out = [...C('C · Вкладки', st(17, 'Bold'), 900, 200)];
+  [['●', G], ['○', R], ['○', R], ['⊠', O], ['⊠', O], ['●', G], ['●', G], ['●', G]].forEach(([s, c], r) => out.push(...C(s, st(20, 'Symbols', c), 840 - r * 108, 200)));
+  return out;
+}, { blocks: 9, kinds: { p: 9 } });
+
+S('Столбец чисел таблицы', () => {
+  const out = [...C('Цена', st(12, 'Bold'), 800, 100)];
+  ['250', '180', '1 200', '90'].forEach((s, r) => out.push(...C(s, st(12), 760 - r * 40, 100)));
+  return out;
+}, { blocks: 5, kinds: { p: 5 } });
+
 let fail = 0;
 for (const sc of T) {
   const frames = sc.build(), msgs = [];
@@ -235,7 +248,15 @@ for (const sc of T) {
   console.log((ok2 ? '✓ ' : '✗ ') + 'Рамки убираются при склейке');
   if (!ok2) fail++;
 }
-console.log(`\nАвто: ${T.length + 2 - fail}/${T.length + 2} проверок без ошибок`);
+{
+  // склеенный текст в области снова выделяется и разбирается (не считается связанным)
+  const r = H.run(T.find(x => x.name === 'Заголовок + абзац').build(), { mode: 'auto', del: true, gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' });
+  const a = H.analyzeOnly(r.created, { mode: 'auto', gap: 0.12, para: 1.35, col: 1.2, lang: 'ru' });
+  const ok3 = r.created[0].kind === 'AREATEXT' && !a.ana.err && a.ana.blocks && a.ana.blocks.length === 1;
+  console.log((ok3 ? '✓ ' : '✗ ') + 'Склеенный текст в области можно выделить и разобрать снова' + (ok3 ? '' : ': ' + JSON.stringify(a.ana).slice(0, 120)));
+  if (!ok3) fail++;
+}
+console.log(`\nАвто: ${T.length + 3 - fail}/${T.length + 3} проверок без ошибок`);
 
 // пунктир рамок: штрихи начинаются в углах, у значков — сплошная рамка
 {
